@@ -56,4 +56,3 @@ CREATE INDEX audits_created_idx ON yas.audit_logs(created_at DESC);
 CREATE TABLE yas.settings(key text PRIMARY KEY,value jsonb NOT NULL,updated_at timestamptz NOT NULL DEFAULT now());
 INSERT INTO yas.settings(key,value) VALUES('workspace','{"organization":"YouAreSelected","supportEmail":""}');
 CREATE TABLE yas.bootstrap_state(id integer PRIMARY KEY CHECK(id=1),completed_at timestamptz NOT NULL DEFAULT now(),user_id uuid NOT NULL REFERENCES yas.users(id));
-
