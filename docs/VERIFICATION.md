@@ -1,3 +1,5 @@
+> Historical Phase 2 results. Provider configuration and checks have since changed; see [the Phase 3 final audit](../PHASE_3_FINAL_AUDIT.md) for current status.
+
 # Phase 2 verification
 
 Executed locally on 20 October 2026 with Node.js 24.13.1, Next.js 16.4.2 and Chromium through Playwright.

@@ -37,6 +37,8 @@ export function getPool() {
       max: 4,
       idleTimeoutMillis: 10000,
       connectionTimeoutMillis: 10000,
+      statement_timeout: 15000,
+      idle_in_transaction_session_timeout: 15000,
       allowExitOnIdle: true,
     });
     pool.on("error", () => console.error("Database connection interrupted."));

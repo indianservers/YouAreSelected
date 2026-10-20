@@ -3,6 +3,8 @@ import { checkOrigin } from "@/server/access";
 import { safeError } from "@/server/errors";
 import { database } from "@/server/db";
 import { z } from "zod";
+import { observe } from "@/server/logging";
+import { readJson } from "@/server/request";
 export const runtime = "nodejs";
 const signup = z
   .object({
@@ -19,7 +21,10 @@ const signup = z
 async function handle(request: Request) {
   try {
     const url = new URL(request.url);
-    if (request.method === "POST") checkOrigin(request);
+    if (request.method === "POST") {
+      checkOrigin(request);
+      await readJson(request.clone(), 16384);
+    }
     let registration: z.infer<typeof signup> | undefined;
     let duplicate = false;
     if (url.pathname.endsWith("/sign-up/email")) {
@@ -76,5 +81,5 @@ async function handle(request: Request) {
     return Response.json({ message: safe.message }, { status: safe.status });
   }
 }
-export const GET = handle;
-export const POST = handle;
+export const GET = observe("auth.read", handle);
+export const POST = observe("auth.write", handle);

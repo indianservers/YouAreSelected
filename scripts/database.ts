@@ -3,7 +3,8 @@ config({ path: ".env.local", quiet: true });
 config({ quiet: true });
 import { Pool } from "pg";
 import { readFile, readdir } from "node:fs/promises";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { migrationDigests } from "../src/server/migration-checksum";
 import { hash } from "@node-rs/argon2";
 import { connectionString } from "../src/server/db";
 const command = process.argv[2] ?? "inspect";
@@ -72,10 +73,11 @@ async function main() {
         .filter((n) => n.endsWith(".sql"))
         .sort()) {
         const sql = await readFile(`migrations/${name}`, "utf8");
-        const checksum = createHash("sha256").update(sql).digest("hex");
+        const digests = migrationDigests(sql);
+        const checksum = digests[0];
         const old = applied.find((r) => r.name === name);
         if (old) {
-          if (old.checksum !== checksum)
+          if (!digests.includes(old.checksum))
             throw new Error(
               "An applied migration checksum changed. Refusing to continue.",
             );

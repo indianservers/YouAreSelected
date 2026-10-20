@@ -4,9 +4,10 @@ import { reportFilters, reportRows } from "@/server/reports";
 import { csvString, safeCell } from "@/lib/exports";
 import { safeError } from "@/server/errors";
 import { z } from "zod";
+import { observe } from "@/server/logging";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export async function GET(request: Request) {
+async function get(request: Request) {
   try {
     const actor = await requireAdmin(request.headers);
     const filters = reportFilters.parse(
@@ -57,3 +58,4 @@ export async function GET(request: Request) {
     return Response.json({ message: e.message }, { status: e.status });
   }
 }
+export const GET = observe("report.read", get);

@@ -10,6 +10,14 @@ export function grade(
   sections: ExamSection[],
   passingPercentage: number,
 ): ExamResult {
+  // Four decimal places match PostgreSQL numeric marks. Accumulate integers,
+  // including section totals, rather than adding binary floating-point marks.
+  const units = (value: number) => {
+    if (!Number.isFinite(value) || value < 0 || value > 10000)
+      throw new Error("Invalid marking scheme.");
+    return Math.round(value * 10000);
+  };
+  const answers = new Map(responses.map((r) => [r.questionId, r]));
   const result: ExamResult = {
     score: 0,
     maximum: 0,
@@ -29,7 +37,7 @@ export function grade(
     })),
   };
   for (const q of questions) {
-    const response = responses.find((r) => r.questionId === q.id);
+    const response = answers.get(q.id);
     const valid =
       response?.optionId && q.options.some((o) => o.id === response.optionId);
     const kind = !valid
@@ -38,18 +46,31 @@ export function grade(
         ? "correct"
         : "incorrect";
     const score =
-      kind === "correct" ? q.marks : kind === "incorrect" ? -q.negative : 0;
+      kind === "correct"
+        ? units(q.marks)
+        : kind === "incorrect"
+          ? -units(q.negative)
+          : 0;
+    const maximum = units(q.marks);
+    if (!maximum) throw new Error("Question marks must be positive.");
     result[kind]++;
     result.score += score;
-    result.maximum += q.marks;
+    result.maximum += maximum;
     const section = result.sections.find((s) => s.sectionId === q.sectionId);
     if (section) {
       section[kind]++;
       section.score += score;
-      section.maximum += q.marks;
+      section.maximum += maximum;
     }
   }
-  result.score = Number(result.score.toFixed(4));
+  const scoreUnits = result.score,
+    maximumUnits = result.maximum;
+  result.score /= 10000;
+  result.maximum /= 10000;
+  for (const section of result.sections) {
+    section.score /= 10000;
+    section.maximum /= 10000;
+  }
   result.percentage = result.maximum
     ? Number(((result.score / result.maximum) * 100).toFixed(2))
     : 0;
@@ -58,6 +79,6 @@ export function grade(
     passingPercentage >= 0 &&
     passingPercentage <= 100 &&
     result.maximum > 0 &&
-    result.percentage >= passingPercentage;
+    scoreUnits * 10000 >= maximumUnits * Math.round(passingPercentage * 100);
   return result;
 }

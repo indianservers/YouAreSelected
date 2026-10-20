@@ -71,42 +71,56 @@ export class PlatformRepository {
     });
   }
   async exam(tx: Queryable, id: string): Promise<Exam> {
+    const exams = await this.exams(tx, [id]);
+    assert(exams[0], "Examination not found.", 404);
+    return exams[0];
+  }
+  async exams(tx: Queryable, ids: string[]): Promise<Exam[]> {
+    if (!ids.length) return [];
     const { rows } = await tx.query(
-      "SELECT e.*,s.starts_at,s.ends_at,s.timezone FROM yas.exams e JOIN yas.exam_schedules s ON s.exam_id=e.id WHERE e.id=$1",
-      [id],
+      "SELECT e.*,s.starts_at,s.ends_at,s.timezone FROM yas.exams e JOIN yas.exam_schedules s ON s.exam_id=e.id WHERE e.id=ANY($1::uuid[])",
+      [ids],
     );
-    assert(rows[0], "Examination not found.", 404);
-    const sections = (
+    const sectionRows = (
       await tx.query(
-        "SELECT id,section_name FROM yas.exam_sections WHERE exam_id=$1 ORDER BY display_order",
-        [id],
-      )
-    ).rows.map((s) => ({ id: String(s.id), name: String(s.section_name) }));
-    const qrows = (
-      await tx.query(
-        "SELECT q.*, COALESCE(json_agg(json_build_object('id',o.id,'text',o.option_text,'correct',o.is_correct) ORDER BY o.display_order) FILTER(WHERE o.id IS NOT NULL),'[]') AS options FROM yas.questions q LEFT JOIN yas.question_options o ON o.question_id=q.id WHERE q.exam_id=$1 GROUP BY q.id ORDER BY q.display_order",
-        [id],
+        "SELECT id,exam_id,section_name FROM yas.exam_sections WHERE exam_id=ANY($1::uuid[]) ORDER BY display_order",
+        [ids],
       )
     ).rows;
-    const questions = qrows.map((q): Question => ({
-      id: String(q.id),
-      sectionId: String(q.section_id),
-      text: String(q.question_text),
-      options: (
-        q.options as { id: string; text: string; correct: boolean }[]
-      ).map((o) => ({ id: o.id, text: o.text })),
-      correctOptionId: (q.options as { id: string; correct: boolean }[]).find(
-        (o) => o.correct,
-      )?.id,
-      marks: Number(q.marks),
-      negative: Number(q.negative_marks),
-      explanation: String(q.explanation),
-      difficulty: q.difficulty as Question["difficulty"],
-      topic: String(q.topic),
-      tags: q.tags as string[],
-      image: q.image_url ? String(q.image_url) : undefined,
-    }));
-    return examDto(rows[0], sections, questions);
+    const qrows = (
+      await tx.query(
+        "SELECT q.*, COALESCE(json_agg(json_build_object('id',o.id,'text',o.option_text,'correct',o.is_correct) ORDER BY o.display_order) FILTER(WHERE o.id IS NOT NULL),'[]') AS options FROM yas.questions q LEFT JOIN yas.question_options o ON o.question_id=q.id WHERE q.exam_id=ANY($1::uuid[]) GROUP BY q.id ORDER BY q.display_order",
+        [ids],
+      )
+    ).rows;
+    return ids.flatMap((id) => {
+      const row = rows.find((r) => r.id === id);
+      if (!row) return [];
+      const sections = sectionRows
+        .filter((s) => s.exam_id === id)
+        .map((s) => ({ id: String(s.id), name: String(s.section_name) }));
+      const questions = qrows
+        .filter((q) => q.exam_id === id)
+        .map((q): Question => ({
+          id: String(q.id),
+          sectionId: String(q.section_id),
+          text: String(q.question_text),
+          options: (
+            q.options as { id: string; text: string; correct: boolean }[]
+          ).map((o) => ({ id: o.id, text: o.text })),
+          correctOptionId: (
+            q.options as { id: string; correct: boolean }[]
+          ).find((o) => o.correct)?.id,
+          marks: Number(q.marks),
+          negative: Number(q.negative_marks),
+          explanation: String(q.explanation),
+          difficulty: q.difficulty as Question["difficulty"],
+          topic: String(q.topic),
+          tags: q.tags as string[],
+          image: q.image_url ? String(q.image_url) : undefined,
+        }));
+      return [examDto(row, sections, questions)];
+    });
   }
   async saveExam(actor: User, input: unknown): Promise<Exam> {
     const parsed = examSchema.safeParse(input);
@@ -248,10 +262,11 @@ export class PlatformRepository {
     const value = profileSchema.parse(input);
     await this.db.transaction(async (tx) => {
       await this.actor(tx, actor, targetId !== actor.id);
-      await tx.query(
-        "UPDATE yas.users SET full_name=$2,phone=$3,updated_at=now() WHERE id=$1",
-        [targetId, value.name, value.mobile],
+      const updated = await tx.query(
+        "UPDATE yas.users SET full_name=$2,phone=$3,updated_at=now() WHERE id=$1 AND (id=$4 OR role='student') RETURNING id",
+        [targetId, value.name, value.mobile, actor.id],
       );
+      assert(updated.rows.length, "Profile not found.", 404);
       await tx.query(
         "INSERT INTO yas.user_profiles(user_id,institution) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET institution=EXCLUDED.institution,updated_at=now()",
         [targetId, value.institution],
@@ -309,37 +324,53 @@ export class PlatformRepository {
       }
     });
   }
-  async attempt(tx: Queryable, id: string) {
+  async attempt(tx: Queryable, id: string): Promise<ExamAttempt> {
+    const attempts = await this.attempts(tx, [id]);
+    assert(attempts[0], "Attempt not found.", 404);
+    return attempts[0];
+  }
+  async attempts(tx: Queryable, ids: string[]): Promise<ExamAttempt[]> {
+    if (!ids.length) return [];
     const { rows } = await tx.query(
-      "SELECT a.*,r.earned_marks,r.maximum_marks,r.percentage,r.correct_count,r.incorrect_count,r.unattempted_count,r.passed,r.section_results,r.publication_status AS result_publication,r.published_at FROM yas.exam_attempts a LEFT JOIN yas.exam_results r ON r.attempt_id=a.id WHERE a.id=$1",
-      [id],
+      "SELECT a.*,r.earned_marks,r.maximum_marks,r.percentage,r.correct_count,r.incorrect_count,r.unattempted_count,r.passed,r.section_results,r.publication_status AS result_publication,r.published_at FROM yas.exam_attempts a LEFT JOIN yas.exam_results r ON r.attempt_id=a.id WHERE a.id=ANY($1::uuid[])",
+      [ids],
     );
-    assert(rows[0], "Attempt not found.", 404);
-    const questions = (
+    const questionRows = (
       await tx.query(
-        "SELECT snapshot FROM yas.attempt_questions WHERE attempt_id=$1 ORDER BY display_order",
-        [id],
+        "SELECT attempt_id,snapshot FROM yas.attempt_questions WHERE attempt_id=ANY($1::uuid[]) ORDER BY display_order",
+        [ids],
       )
-    ).rows.map((r) => r.snapshot as Question);
-    const responses = (
+    ).rows;
+    const responseRows = (
       await tx.query(
-        "SELECT * FROM yas.student_responses WHERE attempt_id=$1",
-        [id],
+        "SELECT * FROM yas.student_responses WHERE attempt_id=ANY($1::uuid[])",
+        [ids],
       )
-    ).rows.map((r): StudentResponse => ({
-      questionId: String(r.question_id),
-      optionId: r.selected_option_id ? String(r.selected_option_id) : undefined,
-      review: !!r.marked_for_review,
-      visited: !!r.visited,
-    }));
-    return attemptDto(rows[0], questions, responses);
+    ).rows;
+    return ids.flatMap((id) => {
+      const row = rows.find((r) => r.id === id);
+      if (!row) return [];
+      const questions = questionRows
+        .filter((r) => r.attempt_id === id)
+        .map((r) => r.snapshot as Question);
+      const responses = responseRows
+        .filter((r) => r.attempt_id === id)
+        .map((r): StudentResponse => ({
+          questionId: String(r.question_id),
+          optionId: r.selected_option_id
+            ? String(r.selected_option_id)
+            : undefined,
+          review: !!r.marked_for_review,
+          visited: !!r.visited,
+        }));
+      return [attemptDto(row, questions, responses)];
+    });
   }
   async finalize(tx: Queryable, id: string, reason: "manual" | "expired") {
     const row = (
-      await tx.query(
-        "SELECT *,clock_timestamp() AS db_now FROM yas.exam_attempts WHERE id=$1 FOR UPDATE",
-        [id],
-      )
+      await tx.query("SELECT * FROM yas.exam_attempts WHERE id=$1 FOR UPDATE", [
+        id,
+      ])
     ).rows[0];
     assert(row, "Attempt not found.", 404);
     if (row.status === "submitted") return this.attempt(tx, id);
@@ -350,7 +381,9 @@ export class PlatformRepository {
       current.sections,
       current.passingPercentage,
     );
-    const expired = Date.parse(row.db_now) >= Date.parse(row.expires_at);
+    const dbNow = (await tx.query("SELECT clock_timestamp() AS now")).rows[0]
+      .now;
+    const expired = Date.parse(dbNow) >= Date.parse(row.expires_at);
     assert(reason === "manual" || expired, "Attempt has not expired.");
     await tx.query(
       "UPDATE yas.exam_attempts SET status='submitted',submitted_at=LEAST(clock_timestamp(),expires_at),submission_reason=$2,time_taken_seconds=GREATEST(0,FLOOR(EXTRACT(EPOCH FROM LEAST(clock_timestamp(),expires_at)-started_at))),revision=revision+1,updated_at=now() WHERE id=$1",
@@ -462,13 +495,17 @@ export class PlatformRepository {
         ...q,
         options: exam.randomOptions ? shuffle(q.options) : q.options,
       }));
-      for (const [i, q] of questions.entries()) {
-        const snapshot = { ...q, id: randomUUID() };
-        await tx.query(
-          "INSERT INTO yas.attempt_questions(id,attempt_id,source_question_id,snapshot,display_order) VALUES($1,$2,$3,$4,$5)",
-          [snapshot.id, id, q.id, JSON.stringify(snapshot), i],
-        );
-      }
+      const snapshots = questions.map((q, i) => ({
+        id: randomUUID(),
+        source_question_id: q.id,
+        snapshot: q,
+        display_order: i,
+      }));
+      for (const s of snapshots) s.snapshot = { ...s.snapshot, id: s.id };
+      await tx.query(
+        "INSERT INTO yas.attempt_questions(id,attempt_id,source_question_id,snapshot,display_order) SELECT x.id,$1,x.source_question_id,x.snapshot,x.display_order FROM jsonb_to_recordset($2::jsonb) AS x(id uuid,source_question_id uuid,snapshot jsonb,display_order integer)",
+        [id, JSON.stringify(snapshots)],
+      );
       await this.audit(tx, actor, "attempt.started", "attempt", id);
       return safeAttempt(await this.attempt(tx, id), false);
     });
@@ -484,14 +521,18 @@ export class PlatformRepository {
       await this.actor(tx, actor);
       const row = (
         await tx.query(
-          "SELECT *,clock_timestamp() AS db_now FROM yas.exam_attempts WHERE id=$1 FOR UPDATE",
+          "SELECT * FROM yas.exam_attempts WHERE id=$1 FOR UPDATE",
           [id],
         )
       ).rows[0];
       assert(row && row.user_id === actor.id, "Attempt not found.", 404);
       if (row.status === "submitted")
         throw new ServiceError(409, "This attempt is read-only.");
-      if (Date.parse(row.db_now) >= Date.parse(row.expires_at))
+      // Read wall time after obtaining the row lock: a save may have waited
+      // across the deadline while another request held that lock.
+      const dbNow = (await tx.query("SELECT clock_timestamp() AS now")).rows[0]
+        .now;
+      if (Date.parse(dbNow) >= Date.parse(row.expires_at))
         return {
           attempt: safeAttempt(await this.finalize(tx, id, "expired"), false),
           expired: true,
@@ -575,7 +616,7 @@ export class PlatformRepository {
   ) {
     await this.finalizeExpired(actor);
     await this.admin(actor, async (tx) => {
-      await tx.query(
+      const updated = await tx.query(
         "UPDATE yas.exam_results SET publication_status=$2,published_at=CASE WHEN $2='published' THEN now() ELSE NULL END,published_by=$3 WHERE exam_id=$1 AND ($4::uuid IS NULL OR attempt_id=$4)",
         [
           examId,
@@ -583,6 +624,11 @@ export class PlatformRepository {
           actor.id,
           attemptId ?? null,
         ],
+      );
+      assert(
+        updated.rowCount,
+        "No submitted results match this selection.",
+        404,
       );
       await this.audit(
         tx,
@@ -600,7 +646,7 @@ export class PlatformRepository {
     const admin = actor.role === "admin";
     const userRows = (
       await this.db.query(
-        "SELECT u.id,u.full_name,u.email,u.phone,u.role,u.approval_status,u.account_status,u.created_at,p.institution FROM yas.users u LEFT JOIN yas.user_profiles p ON p.user_id=u.id WHERE ($1::boolean OR u.id=$2) ORDER BY u.created_at DESC LIMIT 1000",
+        "SELECT u.id,u.full_name,u.email,u.phone,u.role,u.approval_status,u.account_status,u.created_at,p.institution FROM yas.users u LEFT JOIN yas.user_profiles p ON p.user_id=u.id WHERE ($1::boolean OR u.id=$2) ORDER BY (u.id=$2) DESC,u.created_at DESC LIMIT 1000",
         [admin, actor.id],
       )
     ).rows;
@@ -610,15 +656,16 @@ export class PlatformRepository {
         [admin, actor.id],
       )
     ).rows;
-    const exams: Exam[] = [];
-    for (const row of ids) {
-      const e = await this.exam(this.db, row.id);
-      exams.push(
-        admin
-          ? e
-          : { ...e, questions: e.questions.map((q) => safeQuestion(q, true)) },
-      );
-    }
+    const exams = (
+      await this.exams(
+        this.db,
+        ids.map((r) => String(r.id)),
+      )
+    ).map((e) =>
+      admin
+        ? e
+        : { ...e, questions: e.questions.map((q) => safeQuestion(q, true)) },
+    );
     const assignments = (
       await this.db.query(
         'SELECT id,exam_id AS "examId",user_id AS "userId" FROM yas.exam_assignments WHERE assignment_status=\'active\' AND ($1::boolean OR user_id=$2) LIMIT 10000',
@@ -627,13 +674,16 @@ export class PlatformRepository {
     ).rows as WorkspaceData["assignments"];
     const aids = (
       await this.db.query(
-        "SELECT id FROM yas.exam_attempts WHERE $1::boolean OR user_id=$2 ORDER BY created_at LIMIT 2000",
+        "SELECT id FROM (SELECT id,created_at FROM yas.exam_attempts WHERE $1::boolean OR user_id=$2 ORDER BY (status='in-progress') DESC,created_at DESC LIMIT 2000) recent ORDER BY created_at",
         [admin, actor.id],
       )
     ).rows;
-    const attempts: ExamAttempt[] = [];
-    for (const row of aids)
-      attempts.push(safeAttempt(await this.attempt(this.db, row.id), admin));
+    const attempts = (
+      await this.attempts(
+        this.db,
+        aids.map((r) => String(r.id)),
+      )
+    ).map((a) => safeAttempt(a, admin));
     const settings = (
       await this.db.query(
         "SELECT value FROM yas.settings WHERE key='workspace'",

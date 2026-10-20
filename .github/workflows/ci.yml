@@ -22,8 +22,14 @@ jobs:
       - run: npm run test:e2e
         env:
           CI: "1"
+      - run: npm run test:phase3
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: browser-test-artifacts
           path: test-results/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase3-verification
+          path: verification-artifacts/

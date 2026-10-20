@@ -10,6 +10,67 @@ const response = (questionId: string, optionId?: string): StudentResponse => ({
   review: false,
 });
 describe("deterministic single-correct MCQ grading", () => {
+  it("passes an exact 29 percent decimal boundary without binary rounding error", () => {
+    const qs = Array.from({ length: 100 }, (_, i) => ({
+      ...exam.questions[0],
+      id: `boundary-${i}`,
+      marks: 0.01,
+    }));
+    expect(
+      grade(
+        qs,
+        qs.slice(0, 29).map((q) => response(q.id, q.correctOptionId)),
+        exam.sections,
+        29,
+      ).passed,
+    ).toBe(true);
+  });
+  it("accumulates four-decimal marks exactly in totals and sections", () => {
+    const qs = Array.from({ length: 100 }, (_, i) => ({
+      ...exam.questions[0],
+      id: `decimal-${i}`,
+      marks: 0.1,
+      negative: 0.025,
+    }));
+    const r = grade(
+      qs,
+      qs.map((q, i) =>
+        response(
+          q.id,
+          i < 80
+            ? q.correctOptionId
+            : q.options.find((o) => o.id !== q.correctOptionId)!.id,
+        ),
+      ),
+      exam.sections,
+      75,
+    );
+    expect(r.score).toBe(7.5);
+    expect(r.maximum).toBe(10);
+    expect(r.sections[0].score).toBe(7.5);
+    expect(r.sections[0].maximum).toBe(10);
+    expect(r.passed).toBe(true);
+  });
+  it("does not round a failing score up across the pass boundary", () => {
+    const q = { ...exam.questions[0], marks: 39.999 };
+    const other = { ...exam.questions[1], marks: 60.001 };
+    const r = grade(
+      [q, other],
+      [response(q.id, q.correctOptionId)],
+      exam.sections,
+      40,
+    );
+    expect(r.percentage).toBe(40);
+    expect(r.passed).toBe(false);
+  });
+  it.each([0, -1, NaN, Infinity])(
+    "rejects invalid maximum marks %s",
+    (marks) => {
+      expect(() =>
+        grade([{ ...exam.questions[0], marks }], [], exam.sections, 40),
+      ).toThrow();
+    },
+  );
   it("grades all correct and calculates section performance", () => {
     const r = grade(
       exam.questions,

@@ -10,3 +10,4 @@ playwright-report/
 .vercel/
 lint-results.json
 .test-databases/
+verification-artifacts/

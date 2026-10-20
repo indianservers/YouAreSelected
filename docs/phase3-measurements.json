@@ -1,0 +1,427 @@
+{
+  "local": {
+    "environment": "Windows local disposable PostgreSQL, repository layer, pool max=4; not HTTP login or staging capacity",
+    "started": "2026-10-20T16:13:01.200Z",
+    "fixtures": {
+      "students": 560,
+      "exams": 26,
+      "questions": 1502,
+      "options": 6008
+    },
+    "load": [
+      {
+        "concurrentStudents": 10,
+        "elapsedMs": 109,
+        "errors": 0,
+        "errorRate": 0,
+        "peakConnections": 4,
+        "peakWaiting": 10,
+        "peakRSSMB": 161,
+        "cpuMicros": {
+          "user": 47000,
+          "system": 16000
+        },
+        "stages": {
+          "start": {
+            "count": 10,
+            "p50Ms": 52,
+            "p95Ms": 77,
+            "maxMs": 77
+          },
+          "load": {
+            "count": 10,
+            "p50Ms": 21,
+            "p95Ms": 38,
+            "maxMs": 38
+          },
+          "save": {
+            "count": 10,
+            "p50Ms": 15,
+            "p95Ms": 17,
+            "maxMs": 17
+          },
+          "submit": {
+            "count": 10,
+            "p50Ms": 12,
+            "p95Ms": 16,
+            "maxMs": 16
+          }
+        }
+      },
+      {
+        "concurrentStudents": 50,
+        "elapsedMs": 268,
+        "errors": 0,
+        "errorRate": 0,
+        "peakConnections": 4,
+        "peakWaiting": 92,
+        "peakRSSMB": 163,
+        "cpuMicros": {
+          "user": 266000,
+          "system": 46000
+        },
+        "stages": {
+          "start": {
+            "count": 50,
+            "p50Ms": 32,
+            "p95Ms": 63,
+            "maxMs": 66
+          },
+          "load": {
+            "count": 50,
+            "p50Ms": 48,
+            "p95Ms": 68,
+            "maxMs": 68
+          },
+          "save": {
+            "count": 50,
+            "p50Ms": 41,
+            "p95Ms": 60,
+            "maxMs": 73
+          },
+          "submit": {
+            "count": 50,
+            "p50Ms": 83,
+            "p95Ms": 111,
+            "maxMs": 113
+          }
+        }
+      },
+      {
+        "concurrentStudents": 100,
+        "elapsedMs": 630,
+        "errors": 0,
+        "errorRate": 0,
+        "peakConnections": 4,
+        "peakWaiting": 194,
+        "peakRSSMB": 185,
+        "cpuMicros": {
+          "user": 468000,
+          "system": 204000
+        },
+        "stages": {
+          "start": {
+            "count": 100,
+            "p50Ms": 85,
+            "p95Ms": 164,
+            "maxMs": 172
+          },
+          "load": {
+            "count": 100,
+            "p50Ms": 119,
+            "p95Ms": 183,
+            "maxMs": 188
+          },
+          "save": {
+            "count": 100,
+            "p50Ms": 84,
+            "p95Ms": 125,
+            "maxMs": 128
+          },
+          "submit": {
+            "count": 100,
+            "p50Ms": 194,
+            "p95Ms": 246,
+            "maxMs": 255
+          }
+        }
+      },
+      {
+        "concurrentStudents": 250,
+        "elapsedMs": 1480,
+        "errors": 0,
+        "errorRate": 0,
+        "peakConnections": 4,
+        "peakWaiting": 493,
+        "peakRSSMB": 237,
+        "cpuMicros": {
+          "user": 1125000,
+          "system": 375000
+        },
+        "stages": {
+          "start": {
+            "count": 250,
+            "p50Ms": 208,
+            "p95Ms": 444,
+            "maxMs": 467
+          },
+          "load": {
+            "count": 250,
+            "p50Ms": 331,
+            "p95Ms": 487,
+            "maxMs": 505
+          },
+          "save": {
+            "count": 250,
+            "p50Ms": 159,
+            "p95Ms": 266,
+            "maxMs": 331
+          },
+          "submit": {
+            "count": 250,
+            "p50Ms": 415,
+            "p95Ms": 548,
+            "maxMs": 564
+          }
+        }
+      },
+      {
+        "concurrentStudents": 500,
+        "elapsedMs": 3002,
+        "errors": 0,
+        "errorRate": 0,
+        "peakConnections": 4,
+        "peakWaiting": 991,
+        "peakRSSMB": 242,
+        "cpuMicros": {
+          "user": 1797000,
+          "system": 890000
+        },
+        "stages": {
+          "start": {
+            "count": 500,
+            "p50Ms": 385,
+            "p95Ms": 758,
+            "maxMs": 792
+          },
+          "load": {
+            "count": 500,
+            "p50Ms": 534,
+            "p95Ms": 825,
+            "maxMs": 856
+          },
+          "save": {
+            "count": 500,
+            "p50Ms": 354,
+            "p95Ms": 566,
+            "maxMs": 596
+          },
+          "submit": {
+            "count": 500,
+            "p50Ms": 916,
+            "p95Ms": 1240,
+            "maxMs": 1272
+          }
+        }
+      }
+    ],
+    "timers": [
+      {
+        "minutes": 5,
+        "stableDeadline": true,
+        "lateSaveRejected": true,
+        "idempotentFinalization": true
+      },
+      {
+        "minutes": 30,
+        "stableDeadline": true,
+        "lateSaveRejected": true,
+        "idempotentFinalization": true
+      },
+      {
+        "minutes": 60,
+        "stableDeadline": true,
+        "lateSaveRejected": true,
+        "idempotentFinalization": true
+      },
+      {
+        "minutes": 120,
+        "stableDeadline": true,
+        "lateSaveRejected": true,
+        "idempotentFinalization": true
+      }
+    ],
+    "lockDeadlineRegression": "passed: queued save rejected after deadline",
+    "reportDataset": {
+      "additionalGradedAttempts": 10000,
+      "elapsedMs": 40543
+    },
+    "exports": [
+      {
+        "rows": 10,
+        "source": "distinct persisted, server-graded report rows",
+        "elapsedMs": 54,
+        "rssDeltaMB": 4,
+        "csvBytes": 2318,
+        "xlsxBytes": 7680
+      },
+      {
+        "rows": 100,
+        "source": "distinct persisted, server-graded report rows",
+        "elapsedMs": 31,
+        "rssDeltaMB": 6,
+        "csvBytes": 21342,
+        "xlsxBytes": 15202
+      },
+      {
+        "rows": 1000,
+        "source": "distinct persisted, server-graded report rows",
+        "elapsedMs": 184,
+        "rssDeltaMB": 28,
+        "csvBytes": 211531,
+        "xlsxBytes": 90560
+      },
+      {
+        "rows": 10000,
+        "source": "distinct persisted, server-graded report rows",
+        "elapsedMs": 1242,
+        "rssDeltaMB": 46,
+        "csvBytes": 2113051,
+        "xlsxBytes": 813784
+      }
+    ],
+    "workspace": {
+      "elapsedMs": 38,
+      "queries": 14,
+      "bytes": 98517
+    },
+    "integrity": {
+      "crossed_responses": 0,
+      "duplicate_results": 0,
+      "missing_results": 0,
+      "wrong_owners": 0
+    },
+    "queryPlan": [
+      {
+        "QUERY PLAN": [
+          {
+            "Plan": {
+              "Node Type": "Limit",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Startup Cost": 78.18,
+              "Total Cost": 78.23,
+              "Plan Rows": 20,
+              "Plan Width": 216,
+              "Actual Startup Time": 0.065,
+              "Actual Total Time": 0.067,
+              "Actual Rows": 20,
+              "Actual Loops": 1,
+              "Disabled": false,
+              "Shared Hit Blocks": 32,
+              "Shared Read Blocks": 0,
+              "Shared Dirtied Blocks": 0,
+              "Shared Written Blocks": 0,
+              "Local Hit Blocks": 0,
+              "Local Read Blocks": 0,
+              "Local Dirtied Blocks": 0,
+              "Local Written Blocks": 0,
+              "Temp Read Blocks": 0,
+              "Temp Written Blocks": 0,
+              "Plans": [
+                {
+                  "Node Type": "Sort",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Startup Cost": 78.18,
+                  "Total Cost": 78.25,
+                  "Plan Rows": 29,
+                  "Plan Width": 216,
+                  "Actual Startup Time": 0.064,
+                  "Actual Total Time": 0.065,
+                  "Actual Rows": 20,
+                  "Actual Loops": 1,
+                  "Disabled": false,
+                  "Sort Key": ["created_at DESC"],
+                  "Sort Method": "quicksort",
+                  "Sort Space Used": 32,
+                  "Sort Space Type": "Memory",
+                  "Shared Hit Blocks": 32,
+                  "Shared Read Blocks": 0,
+                  "Shared Dirtied Blocks": 0,
+                  "Shared Written Blocks": 0,
+                  "Local Hit Blocks": 0,
+                  "Local Read Blocks": 0,
+                  "Local Dirtied Blocks": 0,
+                  "Local Written Blocks": 0,
+                  "Temp Read Blocks": 0,
+                  "Temp Written Blocks": 0,
+                  "Plans": [
+                    {
+                      "Node Type": "Index Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Scan Direction": "Forward",
+                      "Index Name": "exam_attempts_exam_id_user_id_attempt_number_key",
+                      "Relation Name": "exam_attempts",
+                      "Alias": "exam_attempts",
+                      "Startup Cost": 0.29,
+                      "Total Cost": 77.48,
+                      "Plan Rows": 29,
+                      "Plan Width": 216,
+                      "Actual Startup Time": 0.015,
+                      "Actual Total Time": 0.049,
+                      "Actual Rows": 29,
+                      "Actual Loops": 1,
+                      "Disabled": false,
+                      "Index Cond": "(user_id = '028a1071-5789-4d2b-abd2-ec0804b5b6c1'::uuid)",
+                      "Rows Removed by Index Recheck": 0,
+                      "Index Searches": 2,
+                      "Shared Hit Blocks": 32,
+                      "Shared Read Blocks": 0,
+                      "Shared Dirtied Blocks": 0,
+                      "Shared Written Blocks": 0,
+                      "Local Hit Blocks": 0,
+                      "Local Read Blocks": 0,
+                      "Local Dirtied Blocks": 0,
+                      "Local Written Blocks": 0,
+                      "Temp Read Blocks": 0,
+                      "Temp Written Blocks": 0
+                    }
+                  ]
+                }
+              ]
+            },
+            "Planning": {
+              "Shared Hit Blocks": 116,
+              "Shared Read Blocks": 0,
+              "Shared Dirtied Blocks": 0,
+              "Shared Written Blocks": 0,
+              "Local Hit Blocks": 0,
+              "Local Read Blocks": 0,
+              "Local Dirtied Blocks": 0,
+              "Local Written Blocks": 0,
+              "Temp Read Blocks": 0,
+              "Temp Written Blocks": 0
+            },
+            "Planning Time": 5.663,
+            "Triggers": [],
+            "Execution Time": 0.091
+          }
+        ]
+      }
+    ],
+    "recovery": {
+      "tables": 20,
+      "restoredRows": 90014,
+      "checksumsMatch": true,
+      "elapsedMs": 10388,
+      "scope": "isolated logical copy and restore; not Neon PITR"
+    },
+    "completed": "2026-10-20T16:14:03.069Z"
+  },
+  "provider": {
+    "checkedAt": "2026-10-20T15:57:07.730Z",
+    "database": "Neon",
+    "adminLogin": true,
+    "workspaceRead": true,
+    "adminHealth": true,
+    "loginMs": 5003,
+    "health": {
+      "status": "ok",
+      "database": "reachable",
+      "databaseMs": 227
+    },
+    "testDataInserted": false
+  },
+  "secretScan": {
+    "checkedAt": "2026-10-20T16:17:21.480Z",
+    "stagedDiff": "clean",
+    "trackedHistory": "clean",
+    "clientBundleFiles": 96,
+    "knownServerSecretsChecked": 3,
+    "knownServerSecretsAbsent": true
+  }
+}

@@ -3,13 +3,15 @@ import { requireUser, checkOrigin } from "@/server/access";
 import { database } from "@/server/db";
 import { PlatformRepository } from "@/server/platform";
 import { safeError, ServiceError } from "@/server/errors";
+import { observe } from "@/server/logging";
+import { readJson } from "@/server/request";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const repo = new PlatformRepository(database);
 const ids = z.array(z.uuid()).min(1).max(500);
 const success = (value: unknown) =>
   Response.json(value, { headers: { "Cache-Control": "no-store" } });
-export async function GET(
+async function get(
   request: Request,
   { params }: { params: Promise<{ command: string }> },
 ) {
@@ -56,7 +58,7 @@ export async function GET(
     return Response.json({ message: e.message }, { status: e.status });
   }
 }
-export async function POST(
+async function post(
   request: Request,
   { params }: { params: Promise<{ command: string }> },
 ) {
@@ -65,7 +67,7 @@ export async function POST(
     if (Number(request.headers.get("content-length") ?? 0) > 1500000)
       return Response.json({ message: "Request too large." }, { status: 413 });
     const user = await requireUser(request.headers);
-    const body = await request.json();
+    const body = await readJson(request);
     const { command } = await params;
     let result: unknown;
     if (
@@ -213,3 +215,5 @@ export async function POST(
     return Response.json({ message: e.message }, { status: e.status });
   }
 }
+export const GET = observe("platform.read", get);
+export const POST = observe("platform.write", post);

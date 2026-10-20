@@ -71,3 +71,17 @@ Import the GitHub repository with **Next.js**, root `./`, Node 24, install comma
 Optional reset email needs `RESEND_API_KEY` and verified `EMAIL_FROM`. Without them, the form clearly reports unavailable delivery and sends nothing. Images use HTTPS URLs; uploads require future durable object-storage configuration. Vercel's ephemeral filesystem is never used for runtime application records.
 
 A successful local build or Git push is not proof of deployment or Neon connectivity. Verify the returned Vercel URL and real provider connection separately. Phase 3 audits, load testing, backup/recovery and operational sign-off remain a separate phase.
+
+## Phase 3 hardening and release status
+
+Read [PHASE_3_FINAL_AUDIT.md](PHASE_3_FINAL_AUDIT.md) for the release decision, coverage, measured local load results and outstanding production gates. The release is currently **NOT READY FOR PRODUCTION** until preview/HTTPS, reset email, project-specific recovery and staging capacity checks are completed.
+
+```sh
+npm run test:phase3
+```
+
+This command creates a disposable loopback PostgreSQL cluster, deterministic test fixtures, controlled 10/50/100/250/500-candidate repository workloads and a second disposable recovery database. It never seeds the configured Neon database. Run it separately from browser tests because both harnesses use port 55432. Raw sanitized measurements are saved in ignored `verification-artifacts/`.
+
+The owner-supplied Neon database was inspected and migrated through `0003_response_deadline_guard.sql`. Initial administrator bootstrap and actual provider sign-in/diagnostics/logout checks passed. Local `.env.local` contains server configuration and `.env.bootstrap` contains the generated initial administrator credentials; both are ignored. Transfer the initial password securely, change it and remove the bootstrap credential file after setup. Do not copy either file into documentation or Git. Provider verification does not establish Vercel deployment readiness.
+
+See [RECOVERY.md](docs/RECOVERY.md) before database recovery or migration incident work. Administrator-only `/api/health` returns reachability/latency; it exposes no connection settings.

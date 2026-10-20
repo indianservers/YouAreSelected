@@ -25,7 +25,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { usePlatform } from "@/lib/client/store";
-import { Avatar, Badge, LoadingSkeleton } from "./ui";
+import { Avatar, Badge, LoadingSkeleton, EmptyState, Button } from "./ui";
 export function Brand() {
   return (
     <Link href="/" className="brand">
@@ -54,7 +54,7 @@ export function Shell({
   const [notifications, setNotifications] = useState(false);
   const user = state.data.users.find((u) => u.id === state.sessionId);
   useEffect(() => {
-    if (state.ready && (!user || user.role !== role)) {
+    if (state.ready && !state.error && (!user || user.role !== role)) {
       router.replace(
         user
           ? user.role === "admin"
@@ -63,7 +63,19 @@ export function Shell({
           : "/login",
       );
     }
-  }, [state.ready, user, role, router]);
+  }, [state.ready, state.error, user, role, router]);
+  if (state.ready && !user && state.error)
+    return (
+      <EmptyState
+        title="Workspace temporarily unavailable"
+        description={state.error}
+        action={
+          <Button onClick={() => void state.load().catch(() => {})}>
+            Retry loading workspace
+          </Button>
+        }
+      />
+    );
   if (!state.ready || !user || user.role !== role) return <LoadingSkeleton />;
   const admin = role === "admin";
   const nav = admin

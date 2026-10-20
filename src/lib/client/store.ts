@@ -1,6 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { toast } from "sonner";
+import { syncServerClock } from "@/lib/server-clock";
 import type {
   WorkspaceData,
   Exam,
@@ -131,6 +132,7 @@ export const usePlatform = create<Store>()((set, get) => {
         `/api/platform/${operation}`,
         body,
       );
+      syncServerClock(r.serverNow);
       set({ clockOffset: Date.parse(r.serverNow) - Date.now(), error: "" });
       if (update) await get().load();
       return r.result;
@@ -165,6 +167,7 @@ export const usePlatform = create<Store>()((set, get) => {
             sessionId: string;
             serverNow: string;
           }>("/api/platform/workspace");
+          syncServerClock(state.serverNow);
           set({
             ...state,
             data: { ...state.data, attempts: state.data.attempts.map(overlay) },
@@ -184,15 +187,21 @@ export const usePlatform = create<Store>()((set, get) => {
       return refresh;
     },
     login: async (email, password, remember) => {
-      await request("/api/auth/sign-in/email", {
-        email,
-        password,
-        rememberMe: remember,
-      });
-      await get().load();
-      const user = get().data.users.find((u) => u.id === get().sessionId);
-      if (!user) throw Error("Unable to restore your session.");
-      return user;
+      set({ busy: true });
+      try {
+        if (refresh) await refresh.catch(() => {});
+        await request("/api/auth/sign-in/email", {
+          email,
+          password,
+          rememberMe: remember,
+        });
+        await get().load();
+        const user = get().data.users.find((u) => u.id === get().sessionId);
+        if (!user) throw Error("Unable to restore your session.");
+        return user;
+      } finally {
+        set({ busy: false });
+      }
     },
     logout: async () => {
       await responseQueue;

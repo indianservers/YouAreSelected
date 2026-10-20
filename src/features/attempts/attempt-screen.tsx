@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { usePlatform } from "@/lib/client/store";
 import { date, duration } from "@/lib/utils";
 import { MathText } from "@/components/math-text";
+import { serverTime } from "@/lib/server-clock";
 import {
   Badge,
   Button,
@@ -57,13 +58,13 @@ export function AttemptScreen({ examId }: { examId: string }) {
   useEffect(() => {
     if (!attempt || attempt.status === "submitted") return;
     const tick = () => {
-      const current = Date.now() + store.clockOffset;
+      const current = serverTime();
       setNow(current);
       if (
         current >= Date.parse(attempt.deadline) &&
-        Date.now() > nextSubmit.current
+        performance.now() > nextSubmit.current
       ) {
-        nextSubmit.current = Date.now() + 10000;
+        nextSubmit.current = performance.now() + 10000;
         void submit(attempt.id).catch(() =>
           toast.error(
             "Connection unavailable. The server deadline still applies. Reconnecting…",
@@ -192,6 +193,10 @@ export function AttemptScreen({ examId }: { examId: string }) {
       </div>
       <div
         className="attempt-progress"
+        role="progressbar"
+        aria-valuenow={answered}
+        aria-valuemin={0}
+        aria-valuemax={attempt.questions.length}
         aria-label={`${answered} questions answered`}
       >
         <div
@@ -209,7 +214,7 @@ export function AttemptScreen({ examId }: { examId: string }) {
               <Badge tone="red">−{question.negative} marks</Badge>
             </div>
           </div>
-          {exam.allowSections && (
+          {(attempt.allowSections ?? exam.allowSections) && (
             <div className="section-tabs">
               {attempt.sections
                 .filter((s) =>
@@ -306,7 +311,7 @@ export function AttemptScreen({ examId }: { examId: string }) {
           <div className="question-footer">
             <Button
               variant="secondary"
-              disabled={index === 0 || !exam.allowRevisit}
+              disabled={index === 0 || !(attempt.allowRevisit ?? exam.allowRevisit)}
               onClick={() => move(index - 1)}
             >
               <ArrowLeft size={16} />

@@ -8,6 +8,8 @@ import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import ExcelJS from "exceljs";
 import { blankExam, blankQuestion } from "../src/lib/exam-defaults";
+import AxeBuilder from "@axe-core/playwright";
+import { mkdir, writeFile } from "node:fs/promises";
 const origin = "http://localhost:3000";
 test.beforeEach(async ({ page }) => {
   page.on("pageerror", (error) => {
@@ -55,7 +57,31 @@ test("real registration, approval, questions, cross-browser attempt, private res
       exact: false,
     }),
   ).toBeVisible();
-  expect((await post(page.request, "save-exam", {})).status()).toBe(403);
+  for (const command of [
+    "save-exam",
+    "duplicate-exam",
+    "save-questions",
+    "user-status",
+    "assign",
+    "release",
+    "settings",
+  ])
+    expect((await post(page.request, command, {})).status()).toBe(403);
+  expect((await page.request.get("/api/health")).status()).toBe(403);
+  expect(
+    (
+      await page.request.post("/api/auth/sign-up/email", {
+        headers: { Origin: origin },
+        data: {
+          name,
+          email,
+          password,
+          confirmPassword: password,
+          phone: "9000000011",
+        },
+      })
+    ).status(),
+  ).toBe(409);
   expect((await page.request.get("/api/reports")).status()).toBe(403);
   const adminContext = await browser.newContext();
   const admin = await adminContext.newPage();
@@ -145,6 +171,15 @@ test("real registration, approval, questions, cross-browser attempt, private res
   await expect(
     page.getByRole("heading", { name: "What is 2 + 2?" }),
   ).toBeVisible();
+  const examAccessibility = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
+    .analyze();
+  await mkdir("verification-artifacts", { recursive: true });
+  await writeFile(
+    "verification-artifacts/axe-examination.json",
+    JSON.stringify(examAccessibility.violations, null, 2),
+  );
+  expect(examAccessibility.violations).toEqual([]);
   await page.getByRole("radio").nth(1).check();
   await expect(page.getByRole("radio").nth(1)).toBeChecked();
   await expect(
@@ -303,18 +338,53 @@ test("real registration, approval, questions, cross-browser attempt, private res
   ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/student/dashboard");
+  await expect(page.locator("#main-content h1").first()).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
   await page.screenshot({
-    path: "test-results/phase2-student-mobile.png",
+    path: "verification-artifacts/phase3-student-mobile.png",
     fullPage: true,
     animations: "disabled",
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/student/profile");
+  await page.getByLabel("Full name", { exact: true }).fill(`${name} Updated`);
+  await page.getByLabel("Mobile number", { exact: true }).fill("9000000099");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(
+    page.getByText("Profile updated.", { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Full name", { exact: true })).toHaveValue(
+    `${name} Updated`,
+  );
+  await expect(page.getByLabel("Mobile number", { exact: true })).toHaveValue(
+    "9000000099",
+  );
+  const profileDb = new Pool({
+    connectionString: "postgresql://postgres:postgres@127.0.0.1:55432/postgres",
+    max: 1,
+  });
+  try {
+    expect(
+      (
+        await profileDb.query(
+          "SELECT full_name,phone,role,approval_status FROM yas.users WHERE email=$1",
+          [email],
+        )
+      ).rows[0],
+    ).toEqual({
+      full_name: `${name} Updated`,
+      phone: "9000000099",
+      role: "student",
+      approval_status: "approved",
+    });
+  } finally {
+    await profileDb.end();
+  }
   const changed = randomBytes(24).toString("base64url");
   await page.getByLabel("Current password", { exact: true }).fill(password);
   await page.getByLabel("New password", { exact: true }).fill(changed);
@@ -337,6 +407,100 @@ test("real registration, approval, questions, cross-browser attempt, private res
   );
   await second.close();
   await adminContext.close();
+});
+
+test("responsive routes, security headers and WCAG automated checks", async ({
+  page,
+}) => {
+  test.setTimeout(300000);
+  const violations: unknown[] = [];
+  for (const path of ["/", "/login", "/register", "/forgot-password"]) {
+    const response = await page.goto(path);
+    expect(response?.headers()["x-content-type-options"]).toBe("nosniff");
+    expect(response?.headers()["x-frame-options"]).toBe("DENY");
+    for (const width of [375, 768, 1280, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.waitForTimeout(250); // Allow the responsive sidebar transition to settle.
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth + 1,
+        ),
+      ).toBe(true);
+    }
+    const audit = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
+      .analyze();
+    violations.push(
+      ...audit.violations.map((v) => ({
+        path,
+        id: v.id,
+        impact: v.impact,
+        nodes: v.nodes.map((n) => ({
+          target: n.target,
+          summary: n.failureSummary,
+        })),
+      })),
+    );
+  }
+  await login(
+    page,
+    process.env.E2E_ADMIN_EMAIL!,
+    process.env.E2E_ADMIN_PASSWORD!,
+  );
+  for (const path of [
+    "/admin",
+    "/admin/users",
+    "/admin/exams",
+    "/admin/exams/new",
+    "/admin/questions",
+    "/admin/assignments",
+    "/admin/results",
+    "/admin/reports",
+    "/admin/settings",
+  ]) {
+    await page.goto(path);
+    await expect(page.locator("#main-content h1").first()).toBeVisible();
+    for (const width of [375, 768, 1280, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.waitForTimeout(250);
+      const overflow = await page.evaluate(() => ({
+        wide: document.documentElement.scrollWidth > innerWidth + 1,
+        items: Array.from(document.querySelectorAll("body *"))
+          .filter(
+            (e) =>
+              e.getBoundingClientRect().right > innerWidth + 1 &&
+              e.getBoundingClientRect().width > 0,
+          )
+          .slice(0, 12)
+          .map((e) => ({
+            tag: e.tagName,
+            cls: e.className,
+            right: e.getBoundingClientRect().right,
+          })),
+      }));
+      if (overflow.wide) violations.push({ path, width, overflow });
+    }
+    const audit = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
+      .analyze();
+    violations.push(
+      ...audit.violations.map((v) => ({
+        path,
+        id: v.id,
+        impact: v.impact,
+        nodes: v.nodes.map((n) => ({
+          target: n.target,
+          summary: n.failureSummary,
+        })),
+      })),
+    );
+  }
+  await mkdir("verification-artifacts", { recursive: true });
+  await writeFile(
+    "verification-artifacts/axe-routes.json",
+    JSON.stringify(violations, null, 2),
+  );
+  expect(violations).toEqual([]);
 });
 test("anonymous access, invalid credentials, CSRF and unconfigured reset email fail safely", async ({
   page,

@@ -1,3 +1,5 @@
+> Phase 2 implementation reference. Neon connectivity, migrations and administrator bootstrap were subsequently verified in Phase 3; see [the current audit](../PHASE_3_FINAL_AUDIT.md).
+
 # Phase 2 — database and server implementation
 
 ## Architecture and schema

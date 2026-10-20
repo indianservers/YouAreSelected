@@ -20,6 +20,17 @@ export function safeError(error: unknown) {
     error &&
     typeof error === "object" &&
     "code" in error &&
+    error.code === "23514"
+  )
+    return {
+      status: 409,
+      message:
+        "The record is no longer writable or valid. Refresh to retrieve its current state.",
+    };
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
     error.code === "23505"
   )
     return {

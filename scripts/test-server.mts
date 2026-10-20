@@ -100,6 +100,28 @@ try {
   console.info(
     "Isolated PostgreSQL: migrations, schema, bootstrap and idempotent sample seed verified.",
   );
+  if (process.env.PHASE3 === "1") {
+    const checks = spawn(
+      process.execPath,
+      ["--import", "tsx", "scripts/phase3-checks.mts"],
+      {
+        env: { ...env, ISOLATED_PHASE3: "yes" },
+        windowsHide: true,
+        stdio: "inherit",
+      },
+    );
+    await new Promise<void>((resolve, reject) => {
+      checks.on("error", reject);
+      checks.on("exit", (code) =>
+        code === 0
+          ? resolve()
+          : reject(Error("Phase 3 isolated checks failed.")),
+      );
+    });
+    if (process.env.PHASE3_ONLY === "1") {
+      await stop();
+    }
+  }
   child = spawn(
     process.execPath,
     ["node_modules/next/dist/bin/next", "dev", "--port", "3000"],

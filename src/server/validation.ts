@@ -1,6 +1,13 @@
 import { z } from "zod";
 const text = (max = 10000) => z.string().max(max);
-const marks=z.number().min(0).max(10000).refine(value=>Math.abs(value*10000-Math.round(value*10000))<0.000001,'Use at most four decimal places for marks.');
+const marks = z
+  .number()
+  .min(0)
+  .max(10000)
+  .refine(
+    (value) => Math.abs(value * 10000 - Math.round(value * 10000)) < 0.000001,
+    "Use at most four decimal places for marks.",
+  );
 const safeText = (max = 10000) =>
   text(max).refine(
     (v) => !/<\/?[a-z][^>]*>/i.test(v),
@@ -21,7 +28,10 @@ export const questionSchema = z
       .min(2)
       .max(12),
     correctOptionId: text(100),
-    marks: marks.refine(value=>value>=0.0001,'Positive marks must be at least 0.0001.'),
+    marks: marks.refine(
+      (value) => value >= 0.0001,
+      "Positive marks must be at least 0.0001.",
+    ),
     negative: marks,
     explanation: safeText(),
     difficulty: z.enum(["Easy", "Medium", "Hard"]),
@@ -55,8 +65,18 @@ export const examSchema = z
     questions: z.array(questionSchema).max(500),
     duration: z.number().int().min(1).max(1440),
     maxAttempts: z.number().int().min(1).max(100),
-    passingPercentage: z.number().min(0).max(100),
-    defaultMarks: marks.refine(value=>value>=0.0001,'Positive marks must be at least 0.0001.'),
+    passingPercentage: z
+      .number()
+      .min(0)
+      .max(100)
+      .refine(
+        (v) => Math.abs(v * 100 - Math.round(v * 100)) < 0.000001,
+        "Use at most two decimal places for the pass threshold.",
+      ),
+    defaultMarks: marks.refine(
+      (value) => value >= 0.0001,
+      "Positive marks must be at least 0.0001.",
+    ),
     defaultNegative: marks,
     randomQuestions: z.boolean(),
     randomOptions: z.boolean(),

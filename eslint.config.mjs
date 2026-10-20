@@ -9,6 +9,8 @@ export default defineConfig([
     "next-env.d.ts",
     "playwright-report/**",
     "test-results/**",
+    ".test-databases/**",
+    "verification-artifacts/**",
   ]),
   { rules: { "react-hooks/set-state-in-effect": "off" } },
 ]);

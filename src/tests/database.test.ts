@@ -10,7 +10,7 @@ import type { Database, Queryable } from "@/server/db";
 import type { User, Exam } from "@/types/domain";
 import { blankExam, blankQuestion } from "@/lib/exam-defaults";
 import { safeAttempt } from "@/server/dto";
-import { reportFilters,reportRows } from '@/server/reports';
+import { reportFilters, reportRows } from "@/server/reports";
 let pg: PGlite;
 let repo: PlatformRepository;
 let db: Database;
@@ -20,6 +20,12 @@ let exam: Exam;
 beforeAll(async () => {
   pg = new PGlite();
   await pg.exec(await readFile("migrations/0001_foundation.sql", "utf8"));
+  await pg.exec(
+    await readFile("migrations/0002_integrity_and_indexes.sql", "utf8"),
+  );
+  await pg.exec(
+    await readFile("migrations/0003_response_deadline_guard.sql", "utf8"),
+  );
   const adapt = (
     client: PGlite | Parameters<Parameters<PGlite["transaction"]>[0]>[0],
   ): Queryable => ({
@@ -73,6 +79,135 @@ beforeAll(async () => {
 }, 30000);
 afterAll(() => pg?.close());
 describe("persistent exam lifecycle and private DTOs", () => {
+  it("does not report success when a profile or result selection does not exist", async () => {
+    await expect(
+      repo.profile(
+        admin,
+        { name: "Valid name", mobile: "9000000000", institution: "" },
+        randomUUID(),
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(repo.release(admin, randomUUID(), true)).rejects.toMatchObject(
+      { status: 404 },
+    );
+  });
+  it("keeps old keys and marks immutable while a new attempt uses the new version", async () => {
+    const copy = await repo.duplicateExam(admin, exam.id);
+    let ready = await repo.saveExam(admin, {
+      ...copy,
+      status: "published",
+      maxAttempts: 2,
+    });
+    await repo.assign(admin, ready.id, [student.id]);
+    const old = await repo.start(student, ready.id);
+    const oldKey = (await repo.attempt(db, old.id)).questions[0]
+      .correctOptionId!;
+    await repo.saveResponse(
+      student,
+      old.id,
+      old.questions[0].id,
+      { optionId: oldKey },
+      0,
+    );
+    const newKey = ready.questions[0].options.find((o) => o.id !== oldKey)!.id;
+    ready.questions[0] = {
+      ...ready.questions[0],
+      correctOptionId: newKey,
+      marks: 3,
+    };
+    ready = await repo.saveExam(admin, ready);
+    await repo.submit(student, old.id);
+    expect((await repo.attempt(db, old.id)).result?.score).toBe(2);
+    const fresh = await repo.start(student, ready.id);
+    await repo.saveResponse(
+      student,
+      fresh.id,
+      fresh.questions[0].id,
+      { optionId: newKey },
+      0,
+    );
+    await repo.submit(student, fresh.id);
+    expect((await repo.attempt(db, fresh.id)).result?.score).toBe(3);
+    expect((await repo.attempt(db, old.id)).questions[0].correctOptionId).toBe(
+      oldKey,
+    );
+  });
+  it("rolls back failed exam replacement, bulk assignment and result insertion", async () => {
+    const initial = await repo.exam(db, exam.id);
+    const failing = (pattern: string) =>
+      new PlatformRepository({
+        ...db,
+        transaction: (fn) =>
+          db.transaction((tx) =>
+            fn({
+              query: async (sql, values) => {
+                if (sql.includes(pattern))
+                  throw new Error("Injected transactional failure");
+                return tx.query(sql, values);
+              },
+            }),
+          ),
+      });
+    await expect(
+      failing("INSERT INTO yas.questions").saveExam(admin, {
+        ...initial,
+        title: "Must roll back",
+      }),
+    ).rejects.toThrow(/Injected/);
+    expect(await repo.exam(db, exam.id)).toEqual(initial);
+    const other = {
+      ...student,
+      id: randomUUID(),
+      email: "rollback@example.test",
+    };
+    await db.query(
+      "INSERT INTO yas.users(id,full_name,email,role,approval_status) VALUES($1,'Rollback',$2,'student','approved')",
+      [other.id, other.email],
+    );
+    await expect(
+      repo.assign(admin, exam.id, [other.id, randomUUID()]),
+    ).rejects.toThrow(/Learner/);
+    expect(
+      (
+        await db.query("SELECT id FROM yas.exam_assignments WHERE user_id=$1", [
+          other.id,
+        ])
+      ).rows,
+    ).toHaveLength(0);
+    await repo.assign(admin, exam.id, [other.id]);
+    const a = await repo.start(other, exam.id);
+    await expect(
+      failing("INSERT INTO yas.exam_results").submit(other, a.id),
+    ).rejects.toThrow(/Injected/);
+    expect((await repo.attempt(db, a.id)).status).toBe("in-progress");
+    expect(
+      (
+        await db.query("SELECT id FROM yas.exam_results WHERE attempt_id=$1", [
+          a.id,
+        ])
+      ).rows,
+    ).toHaveLength(0);
+    await repo.submit(other, a.id);
+  });
+  it("rejects unrelated response options and result owners at the database boundary", async () => {
+    const copy = await repo.duplicateExam(admin, exam.id);
+    const ready = await repo.saveExam(admin, { ...copy, status: "published" });
+    await repo.assign(admin, ready.id, [student.id]);
+    const a = await repo.start(student, ready.id);
+    await expect(
+      db.query(
+        "INSERT INTO yas.student_responses(attempt_id,question_id,selected_option_id) VALUES($1,$2,$3)",
+        [a.id, a.questions[0].id, randomUUID()],
+      ),
+    ).rejects.toThrow();
+    await repo.submit(student, a.id);
+    await expect(
+      db.query("UPDATE yas.exam_results SET user_id=$2 WHERE attempt_id=$1", [
+        a.id,
+        admin.id,
+      ]),
+    ).rejects.toThrow();
+  });
   it("enforces unique normalized email and foreign keys", async () => {
     await expect(
       db.query(
@@ -213,5 +348,27 @@ describe("persistent exam lifecycle and private DTOs", () => {
     );
     expect(state.attempts.every((a) => !a.result)).toBe(true);
   });
-  it('generates every bounded report from persisted rows and enforces report authorization',async()=>{for(const kind of ['scores','users','approved','assignments','participation','attempts','sections','statistics']){const rows=await reportRows(db,admin,reportFilters.parse({kind,status:'all'}));expect(rows.length).toBeGreaterThan(0);expect(JSON.stringify(rows)).not.toMatch(/correctOptionId|password_hash/);}await expect(reportRows(db,student,reportFilters.parse({}))).rejects.toThrow(/Administrator/);});
+  it("generates every bounded report from persisted rows and enforces report authorization", async () => {
+    for (const kind of [
+      "scores",
+      "users",
+      "approved",
+      "assignments",
+      "participation",
+      "attempts",
+      "sections",
+      "statistics",
+    ]) {
+      const rows = await reportRows(
+        db,
+        admin,
+        reportFilters.parse({ kind, status: "all" }),
+      );
+      expect(rows.length).toBeGreaterThan(0);
+      expect(JSON.stringify(rows)).not.toMatch(/correctOptionId|password_hash/);
+    }
+    await expect(
+      reportRows(db, student, reportFilters.parse({})),
+    ).rejects.toThrow(/Administrator/);
+  });
 });

@@ -20,7 +20,10 @@ function createAuth() {
     throw new Error(
       "Configure a high-entropy AUTH_SECRET of at least 32 characters.",
     );
-  if (process.env.NODE_ENV === "production" && !process.env.APP_URL)
+  if (
+    process.env.NODE_ENV === "production" &&
+    (!process.env.APP_URL || new URL(process.env.APP_URL).protocol !== "https:")
+  )
     throw new Error("Configure APP_URL with the canonical HTTPS origin.");
   return betterAuth({
     appName: "YouAreSelected",

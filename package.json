@@ -10,6 +10,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:phase3": "tsx scripts/phase3-run.mts",
     "db:inspect": "tsx scripts/database.ts inspect",
     "db:plan": "tsx scripts/database.ts plan",
     "db:migrate": "tsx scripts/database.ts migrate",
@@ -19,6 +20,7 @@
     "db:seed": "tsx scripts/seed.mts"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@electric-sql/pglite": "^0.5.10",
     "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4.3.3",
