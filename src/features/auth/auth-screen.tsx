@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { PasswordRecovery } from "./password-recovery";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
@@ -21,7 +22,7 @@ import {
 import { toast } from "sonner";
 import { Brand } from "@/components/shell";
 import { Button, Input } from "@/components/ui";
-import { useDemo } from "@/lib/mock/store";
+import { usePlatform } from "@/lib/client/store";
 const schema = z.object({
   email: z.email("Enter a valid email address."),
   password: z.string().min(1, "Enter your password."),
@@ -39,7 +40,7 @@ export function AuthScreen({
   mode?: "login" | "register" | "forgot";
 }) {
   const router = useRouter();
-  const store = useDemo();
+  const store = usePlatform();
   const [show, setShow] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
@@ -47,7 +48,7 @@ export function AuthScreen({
     register,
     handleSubmit,
     control,
-    setValue,
+
     formState: { errors, isSubmitting },
   } = useForm<Values>({
     resolver: zodResolver(schema),
@@ -63,7 +64,7 @@ export function AuthScreen({
     },
   });
   const password = useWatch({ control, name: "password" });
-  const submit = handleSubmit((values) => {
+  const submit = handleSubmit(async (values) => {
     setError("");
     try {
       if (mode === "register") {
@@ -71,21 +72,21 @@ export function AuthScreen({
         if (!/^\+?[\d\s-]{10,15}$/.test(values.mobile))
           throw Error("Enter a valid mobile number.");
         if (
-          values.password.length < 10 ||
+          values.password.length < 12 ||
           !/[A-Z]/.test(values.password) ||
           !/[0-9]/.test(values.password)
         )
           throw Error(
-            "Use at least 10 characters, an uppercase letter and a number.",
+            "Use at least 12 characters, an uppercase letter and a number.",
           );
         if (values.password !== values.confirm)
           throw Error("Passwords must match.");
-        if (!values.terms) throw Error("Please accept the demo terms.");
-        store.register(values);
+        if (!values.terms) throw Error("Please accept the terms.");
+        await store.register(values);
         setDone(true);
-        toast.success("Demo registration received.");
+        toast.success("Registration received. Await administrator approval.");
       } else {
-        const user = store.login(
+        const user = await store.login(
           values.email,
           values.password,
           values.remember,
@@ -157,7 +158,7 @@ export function AuthScreen({
         <div className="auth-top">
           <span className="demo-label">
             <span />
-            Demo Environment
+            Examination Platform
           </span>
           <Link href="/">
             Back to home <ArrowRight size={14} />
@@ -172,7 +173,7 @@ export function AuthScreen({
               <span className="eyebrow">YOU’RE ON THE LIST</span>
               <h1>Great things start here.</h1>
               <p>
-                Your demo account has been created and is pending administrator
+                Your account has been created and is pending administrator
                 approval. Log in to explore your workspace while you wait.
               </p>
               <Button asChild>
@@ -182,29 +183,7 @@ export function AuthScreen({
               </Button>
             </div>
           ) : mode === "forgot" ? (
-            <>
-              <span className="auth-mini-icon">
-                <LockKeyhole size={23} />
-              </span>
-              <h1>A fresh start.</h1>
-              <p>
-                This is a browser-only demo. No password reset emails are sent.
-              </p>
-              <div className="notice">
-                Use the demo credentials below, contact your demo administrator,
-                or reset demo data in Admin Settings. Registered demo accounts
-                can change their password while logged in.
-              </div>
-              <div className="demo-credentials">
-                <strong>Student demo</strong>
-                <code>student@demo.test / Student@12345</code>
-                <strong>Admin demo</strong>
-                <code>admin@demo.test / Admin@12345</code>
-              </div>
-              <Button asChild>
-                <Link href="/login">Back to login</Link>
-              </Button>
-            </>
+            <PasswordRecovery />
           ) : (
             <>
               <span className="eyebrow">
@@ -273,7 +252,7 @@ export function AuthScreen({
                         }}
                       />
                       <small>
-                        10+ characters, one uppercase letter and one number
+                        12+ characters, one uppercase letter and one number
                       </small>
                     </div>
                     <Input
@@ -288,7 +267,7 @@ export function AuthScreen({
                     />
                     <label className="checkbox-line">
                       <input type="checkbox" {...register("terms")} />I agree to
-                      use this demo with sample information only.
+                      the examination rules and account terms.
                     </label>
                   </>
                 ) : (
@@ -324,42 +303,12 @@ export function AuthScreen({
                   {mode === "register" ? "Sign in" : "Create an account"}
                 </Link>
               </p>
-              {mode === "login" && (
-                <div className="demo-box">
-                  <div>
-                    <ShieldCheck size={16} />
-                    <strong>Take a look around</strong>
-                    <span>DEMO ACCESS</span>
-                  </div>
-                  <p>Choose a role to fill in the demo credentials.</p>
-                  <div className="demo-buttons">
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        setValue("email", "student@demo.test");
-                        setValue("password", "Student@12345");
-                      }}
-                    >
-                      Student demo <ArrowRight size={14} />
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        setValue("email", "admin@demo.test");
-                        setValue("password", "Admin@12345");
-                      }}
-                    >
-                      Admin demo <ArrowRight size={14} />
-                    </Button>
-                  </div>
-                </div>
-              )}
             </>
           )}
         </div>
         <p className="auth-footer">
           <LockKeyhole size={13} />
-          Phase 1 demo · Browser storage · No production authentication
+          Secure sign-in · Private records
         </p>
       </main>
     </div>

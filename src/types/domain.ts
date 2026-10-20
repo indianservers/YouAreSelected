@@ -11,7 +11,6 @@ export interface User extends UserProfile {
   role: Role;
   status: UserStatus;
   registeredAt: string;
-  demoPassword: string;
 }
 export interface AnswerOption {
   id: string;
@@ -26,10 +25,10 @@ export interface Question {
   sectionId: string;
   text: string;
   options: AnswerOption[];
-  correctOptionId: string;
+  correctOptionId?: string;
   marks: number;
   negative: number;
-  explanation: string;
+  explanation?: string;
   difficulty: "Easy" | "Medium" | "Hard";
   topic: string;
   tags: string[];
@@ -41,6 +40,7 @@ export interface ExamSchedule {
   timeZone: string;
 }
 export interface Exam {
+  version?: number;
   id: string;
   title: string;
   code: string;
@@ -99,6 +99,10 @@ export interface ResultPublication {
   releasedAt?: string;
 }
 export interface ExamAttempt {
+  revision?: number;
+  allowRevisit?: boolean;
+  allowSections?: boolean;
+  showReview?: boolean;
   currentIndex: number;
   id: string;
   examId: string;
@@ -114,7 +118,20 @@ export interface ExamAttempt {
   result?: ExamResult;
   publication: ResultPublication;
 }
-export interface DemoData {
+export interface WorkspaceData {
+  metrics?: {
+    totalUsers: number;
+    pendingUsers: number;
+    approvedUsers: number;
+    totalExams: number;
+    activeExams: number;
+    submittedAttempts: number;
+    assignedExams: number;
+    upcomingExams: number;
+    publishedResults: number;
+    averageScore: number;
+    participation: { name: string; value: number }[];
+  };
   version: 1;
   users: User[];
   exams: Exam[];

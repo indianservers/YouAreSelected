@@ -15,8 +15,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useDemo } from "@/lib/mock/store";
-import { blankQuestion, id } from "@/lib/mock/seed";
+import { usePlatform } from "@/lib/client/store";
+import { blankQuestion, id } from "@/lib/exam-defaults";
 import { questionErrors } from "@/lib/rules";
 import type { Question } from "@/types/domain";
 import {
@@ -32,7 +32,7 @@ import {
 import { MathText } from "@/components/math-text";
 import { ExamNav } from "@/features/exams/admin-exams";
 export function QuestionBank({ examId }: { examId?: string }) {
-  const store = useDemo();
+  const store = usePlatform();
   const [selectedExam, setSelectedExam] = useState(
     examId ?? store.data.exams[0]?.id ?? "",
   );
@@ -65,9 +65,9 @@ export function QuestionBank({ examId }: { examId?: string }) {
     setEditing((q) => (q ? { ...q, ...patch } : q));
     setDirty(true);
   };
-  const persist = (questions: Question[]) => {
+  const persist = async (questions: Question[]) => {
     try {
-      store.saveQuestions(exam.id, questions);
+      await store.saveQuestions(exam.id, questions);
       toast.success("Question bank updated.");
       return true;
     } catch (error) {
@@ -75,7 +75,7 @@ export function QuestionBank({ examId }: { examId?: string }) {
       return false;
     }
   };
-  const save = () => {
+  const save = async () => {
     if (!editing) return;
     const issues = questionErrors(editing);
     setErrors(issues);
@@ -83,7 +83,7 @@ export function QuestionBank({ examId }: { examId?: string }) {
     const list = exam.questions.some((q) => q.id === editing.id)
       ? exam.questions.map((q) => (q.id === editing.id ? editing : q))
       : [...exam.questions, editing];
-    if (persist(list)) {
+    if (await persist(list)) {
       setEditing(null);
       setDirty(false);
     }
@@ -121,7 +121,7 @@ export function QuestionBank({ examId }: { examId?: string }) {
         description="Craft clear questions. Build a better assessment."
         action={
           <Button
-            onClick={() => {
+            onClick={async () => {
               setEditing({
                 ...blankQuestion(exam.sections[0]?.id),
                 marks: exam.defaultMarks,
@@ -222,7 +222,7 @@ export function QuestionBank({ examId }: { examId?: string }) {
                   </div>
                   <button
                     className="question-edit-trigger"
-                    onClick={() => {
+                    onClick={async () => {
                       setEditing(structuredClone(q));
                       setErrors([]);
                       setDirty(false);
@@ -252,7 +252,7 @@ export function QuestionBank({ examId }: { examId?: string }) {
                         title="Move up"
                         aria-label={`Move question ${index + 1} up`}
                         disabled={index === 0}
-                        onClick={() => {
+                        onClick={async () => {
                           const copy = [...exam.questions];
                           [copy[index - 1], copy[index]] = [
                             copy[index],
@@ -267,7 +267,7 @@ export function QuestionBank({ examId }: { examId?: string }) {
                         title="Move down"
                         aria-label={`Move question ${index + 1} down`}
                         disabled={index === exam.questions.length - 1}
-                        onClick={() => {
+                        onClick={async () => {
                           const copy = [...exam.questions];
                           [copy[index + 1], copy[index]] = [
                             copy[index],
@@ -322,7 +322,7 @@ export function QuestionBank({ examId }: { examId?: string }) {
             </div>
             <form
               className="panel-body form-stack"
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 save();
               }}
@@ -544,7 +544,7 @@ export function QuestionBank({ examId }: { examId?: string }) {
                 <Button
                   variant="secondary"
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     setEditing(null);
                     setDirty(false);
                   }}
@@ -568,8 +568,8 @@ export function QuestionBank({ examId }: { examId?: string }) {
         description="This removes it from future attempts. Existing attempt snapshots are preserved. Published exams must retain a valid question set."
         destructive
         label="Delete question"
-        onConfirm={() => {
-          if (persist(exam.questions.filter((q) => q.id !== remove))) {
+        onConfirm={async () => {
+          if (await persist(exam.questions.filter((q) => q.id !== remove))) {
             if (editing?.id === remove) setEditing(null);
           }
         }}

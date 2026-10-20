@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -16,8 +16,7 @@ import {
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { ExamAttempt } from "@/types/domain";
-import { useDemo } from "@/lib/mock/store";
-import { downloadResults } from "@/lib/exports";
+import { usePlatform, request } from "@/lib/client/store";
 import { date } from "@/lib/utils";
 import {
   Avatar,
@@ -37,7 +36,7 @@ export function AdminResults({
   examId?: string;
   reports?: boolean;
 }) {
-  const store = useDemo();
+  const store = usePlatform();
   const params = useSearchParams();
   const [examFilter, setExamFilter] = useState(examId ?? "all");
   const [publication, setPublication] = useState("all");
@@ -47,6 +46,44 @@ export function AdminResults({
   const [to, setTo] = useState("");
   const [release, setRelease] = useState<boolean | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [reportKind, setReportKind] = useState("scores");
+  const [preview, setPreview] = useState<Record<string, unknown>[]>([]),
+    [reportError, setReportError] = useState("");
+  useEffect(() => {
+    if (!reports) return;
+    let cancelled = false;
+    const query = new URLSearchParams({
+      exam: examFilter,
+      student,
+      publication,
+      status,
+      from,
+      to,
+      kind: reportKind,
+      preview: "1",
+    });
+    void request<{ rows: Record<string, unknown>[] }>(`/api/reports?${query}`)
+      .then((result) => {
+        if (!cancelled) {
+          setPreview(result.rows);
+          setReportError("");
+        }
+      })
+      .catch((error) => !cancelled && setReportError(error.message));
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    reports,
+    examFilter,
+    student,
+    publication,
+    status,
+    from,
+    to,
+    reportKind,
+    store.data.attempts,
+  ]);
   const selectedAttempt = params.get("attempt");
   const rows = store.data.attempts.filter(
     (a) =>
@@ -160,7 +197,27 @@ export function AdminResults({
   const doExport = async (format: "csv" | "xlsx") => {
     setExporting(true);
     try {
-      await downloadResults(store.data, submitted, format);
+      const query = new URLSearchParams({
+        exam: examFilter,
+        student,
+        publication,
+        status,
+        from,
+        to,
+        format,
+        kind: reportKind,
+      });
+      const response = await fetch(`/api/reports?${query}`, {
+        cache: "no-store",
+      });
+      if (!response.ok)
+        throw Error((await response.json()).message ?? "Export failed.");
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `youareselected-${reportKind}.${format}`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       toast.success(`${format.toUpperCase()} export downloaded.`);
     } catch (error) {
       toast.error((error as Error).message);
@@ -184,7 +241,7 @@ export function AdminResults({
           <div className="button-row">
             <Button
               variant="secondary"
-              disabled={exporting || !submitted.length}
+              disabled={exporting}
               onClick={() => doExport("csv")}
             >
               <Download size={15} />
@@ -192,7 +249,7 @@ export function AdminResults({
             </Button>
             <Button
               variant="secondary"
-              disabled={exporting || !submitted.length}
+              disabled={exporting}
               onClick={() => doExport("xlsx")}
             >
               <Download size={15} />
@@ -201,6 +258,35 @@ export function AdminResults({
           </div>
         }
       />
+      {reports && (
+        <div className="toolbar">
+          <Field label="Report to export">
+            <select
+              value={reportKind}
+              onChange={(e) => setReportKind(e.target.value)}
+            >
+              {[
+                ["scores", "Examination scores"],
+                ["users", "Registered learners"],
+                ["approved", "Approved learners"],
+                ["assignments", "Exam assignments"],
+                ["participation", "Participation"],
+                ["attempts", "All attempts"],
+                ["sections", "Section performance"],
+                ["statistics", "Pass/fail statistics"],
+              ].map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <small>
+            Exports are authorized server-side and limited to 10,000 records.
+            Date filters use UTC.
+          </small>
+        </div>
+      )}
       <div className="grid three stats-grid">
         <StatCard
           label="Assigned learners"
@@ -327,7 +413,23 @@ export function AdminResults({
             </Button>
           </div>
         </div>
-        <DataTable columns={columns} data={rows} />
+        {reportError && (
+          <p className="form-error" role="alert">
+            {reportError}
+          </p>
+        )}
+        {reports ? (
+          <DataTable
+            columns={Object.keys(preview[0] ?? {}).map((key):ColumnDef<Record<string,unknown>> => ({
+              accessorKey: key,
+              header: key,
+              cell: ({ row }) => String(row.original[key] ?? "—"),
+            }))}
+            data={preview}
+          />
+        ) : (
+          <DataTable columns={columns} data={rows} />
+        )}
       </section>
       <div className="soft-note mt">
         Exports use the filtered submitted records and include calculated
@@ -340,8 +442,8 @@ export function AdminResults({
         title={release ? "Release these results?" : "Withhold these results?"}
         description={`${release ? "Students will be able to view" : "Students will no longer be able to view"} scores and configured answer reviews for all submitted attempts of this examination.`}
         label={release ? "Release results" : "Withhold results"}
-        onConfirm={() => {
-          store.release(examFilter, !!release);
+        onConfirm={async () => {
+          await store.release(examFilter, !!release);
           toast.success(release ? "Results published." : "Results withheld.");
           setRelease(null);
         }}

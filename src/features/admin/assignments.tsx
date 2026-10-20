@@ -1,6 +1,7 @@
 "use client";
 import { useNow } from "@/lib/use-now";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import {
   CalendarDays,
   Check,
@@ -12,8 +13,8 @@ import {
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { User } from "@/types/domain";
-import { useDemo } from "@/lib/mock/store";
-import { date } from "@/lib/utils";
+import { usePlatform, request } from "@/lib/client/store";
+import { examDate } from "@/lib/utils";
 import {
   Avatar,
   Badge,
@@ -28,10 +29,6 @@ import {
   Tabs,
 } from "@/components/ui";
 import { ExamNav } from "@/features/exams/admin-exams";
-const localInput = (iso: string) => {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
 export function AssignmentManagement({
   examId,
   mode = "assignments",
@@ -39,7 +36,7 @@ export function AssignmentManagement({
   examId?: string;
   mode?: "assignments" | "schedule";
 }) {
-  const store = useDemo();
+  const store = usePlatform();
   const [selectedExam, setSelectedExam] = useState(
     examId ?? store.data.exams[0]?.id ?? "",
   );
@@ -50,6 +47,46 @@ export function AssignmentManagement({
   const [filter, setFilter] = useState("all");
   const [selected, setSelected] = useState<string[]>([]);
   const [remove, setRemove] = useState(false);
+  const [users, setUsers] = useState<User[]>([]),
+    [page, setPage] = useState(1),
+    [total, setTotal] = useState(0),
+    [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: "10",
+        status: filter === "approved" ? "approved" : "all",
+        search,
+        sort: "name",
+        desc: "false",
+        ...(filter === "assigned" ? { examId: selectedExam } : {}),
+      });
+      void request<{ users: User[]; total: number }>(
+        `/api/platform/users?${params}`,
+      )
+        .then((r) => {
+          if (!cancelled) {
+            setUsers(r.users);
+            setTotal(r.total);
+            setLoadError("");
+          }
+        })
+        .catch((e) => !cancelled && setLoadError(e.message));
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    search,
+    filter,
+    page,
+    selectedExam,
+    store.data.assignments,
+    store.data.users,
+  ]);
   const exam = store.data.exams.find((e) => e.id === selectedExam);
   if (!exam)
     return (
@@ -58,16 +95,6 @@ export function AssignmentManagement({
         description="Create an examination before assigning learners or scheduling it."
       />
     );
-  const users = store.data.users.filter(
-    (u) =>
-      u.role === "student" &&
-      (filter === "all" ||
-        (filter === "approved" && u.status === "approved") ||
-        (filter === "assigned" &&
-          store.data.assignments.some(
-            (a) => a.examId === exam.id && a.userId === u.id,
-          ))),
-  );
   const eligible = users.filter(
     (u) =>
       u.status === "approved" &&
@@ -79,7 +106,7 @@ export function AssignmentManagement({
       header: () => (
         <input
           type="checkbox"
-          aria-label="Select all eligible learners"
+          aria-label="Select eligible learners on this page"
           checked={
             eligible.length > 0 &&
             eligible.every((u) => selected.includes(u.id))
@@ -146,9 +173,9 @@ export function AssignmentManagement({
           <Button
             variant="secondary"
             disabled={!assigned && row.original.status !== "approved"}
-            onClick={() => {
+            onClick={async () => {
               try {
-                store.assign(exam.id, [row.original.id], assigned);
+                await store.assign(exam.id, [row.original.id], assigned);
                 toast.success(
                   assigned ? "Assignment removed." : "Learner assigned.",
                 );
@@ -221,13 +248,19 @@ export function AssignmentManagement({
           <div className="panel-body no-bottom">
             <SearchToolbar
               value={search}
-              onChange={setSearch}
+              onChange={(value) => {
+                setSearch(value);
+                setPage(1);
+              }}
               placeholder="Search learners…"
             >
               <select
                 aria-label="Filter learners"
                 value={filter}
-                onChange={(e) => setFilter(e.target.value)}
+                onChange={(e) => {
+                  setFilter(e.target.value);
+                  setPage(1);
+                }}
               >
                 <option value="all">All learners</option>
                 <option value="approved">Approved only</option>
@@ -235,9 +268,9 @@ export function AssignmentManagement({
               </select>
               <Button
                 disabled={!selected.length}
-                onClick={() => {
+                onClick={async () => {
                   try {
-                    store.assign(exam.id, selected);
+                    await store.assign(exam.id, selected);
                     toast.success(`${selected.length} learners assigned.`);
                     setSelected([]);
                   } catch (error) {
@@ -257,7 +290,16 @@ export function AssignmentManagement({
               </Button>
             </SearchToolbar>
           </div>
-          <DataTable columns={columns} data={users} search={search} />
+          {loadError && (
+            <p className="form-error" role="alert">
+              {loadError}
+            </p>
+          )}
+          <DataTable
+            columns={columns}
+            data={users}
+            server={{ page, pageSize: 10, total, onPage: setPage }}
+          />
         </section>
       )}
       <ConfirmDialog
@@ -267,8 +309,8 @@ export function AssignmentManagement({
         description="These learners will no longer be eligible to start this examination."
         destructive
         label="Remove assignments"
-        onConfirm={() => {
-          store.assign(exam.id, selected, true);
+        onConfirm={async () => {
+          await store.assign(exam.id, selected, true);
           setSelected([]);
           toast.success("Assignments removed.");
         }}
@@ -278,14 +320,18 @@ export function AssignmentManagement({
 }
 function ScheduleEditor({ examId }: { examId: string }) {
   const now = useNow();
-  const store = useDemo();
+  const store = usePlatform();
   const exam = store.data.exams.find((e) => e.id === examId)!;
-  const [start, setStart] = useState(localInput(exam.schedule.start));
-  const [end, setEnd] = useState(localInput(exam.schedule.end));
+  const [zone, setZone] = useState(exam.schedule.timeZone);
+  const [start, setStart] = useState(
+    formatInTimeZone(exam.schedule.start, zone, "yyyy-MM-dd'T'HH:mm"),
+  );
+  const [end, setEnd] = useState(
+    formatInTimeZone(exam.schedule.end, zone, "yyyy-MM-dd'T'HH:mm"),
+  );
   const [minutes, setMinutes] = useState(exam.duration);
   const [attempts, setAttempts] = useState(exam.maxAttempts);
   const [error, setError] = useState("");
-  const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return (
     <div className="detail-grid">
       <section className="panel">
@@ -298,7 +344,7 @@ function ScheduleEditor({ examId }: { examId: string }) {
         </div>
         <form
           className="panel-body form-stack"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             try {
               if (
@@ -311,14 +357,23 @@ function ScheduleEditor({ examId }: { examId: string }) {
                 throw Error(
                   "Use a positive duration and integer attempt limit.",
                 );
-              store.saveExam({
+              const startInstant = fromZonedTime(start, zone),
+                endInstant = fromZonedTime(end, zone);
+              if (
+                +endInstant <= +startInstant ||
+                formatInTimeZone(startInstant, zone, "yyyy-MM-dd'T'HH:mm") !==
+                  start ||
+                formatInTimeZone(endInstant, zone, "yyyy-MM-dd'T'HH:mm") !== end
+              )
+                throw Error("Invalid local date/time in the selected zone.");
+              await store.saveExam({
                 ...exam,
                 duration: minutes,
                 maxAttempts: attempts,
                 schedule: {
-                  start: new Date(start).toISOString(),
-                  end: new Date(end).toISOString(),
-                  timeZone: localZone,
+                  start: startInstant.toISOString(),
+                  end: endInstant.toISOString(),
+                  timeZone: zone,
                 },
               });
               setError("");
@@ -333,11 +388,46 @@ function ScheduleEditor({ examId }: { examId: string }) {
           <div className="notice">
             <Clock3 size={17} />
             <span>
-              Inputs use <strong>{localZone}</strong>, the browser’s local time
-              zone. Values are stored as UTC instants. The configured zone is
-              saved explicitly with the schedule.
+              Inputs use <strong>{zone}</strong>, the selected examination time
+              zone. Values are stored as UTC instants.
             </span>
           </div>
+          <Field label="Examination time zone">
+            <select
+              value={zone}
+              onChange={(e) => {
+                setStart(
+                  formatInTimeZone(
+                    fromZonedTime(start, zone),
+                    e.target.value,
+                    "yyyy-MM-dd'T'HH:mm",
+                  ),
+                );
+                setEnd(
+                  formatInTimeZone(
+                    fromZonedTime(end, zone),
+                    e.target.value,
+                    "yyyy-MM-dd'T'HH:mm",
+                  ),
+                );
+                setZone(e.target.value);
+              }}
+            >
+              {[
+                ...new Set([
+                  zone,
+                  "Asia/Kolkata",
+                  "UTC",
+                  "America/New_York",
+                  "Europe/London",
+                  "Asia/Dubai",
+                  "Asia/Singapore",
+                ]),
+              ].map((z) => (
+                <option key={z}>{z}</option>
+              ))}
+            </select>
+          </Field>
           <div className="grid two">
             <Input
               label="Exam opens — date & time"
@@ -399,11 +489,11 @@ function ScheduleEditor({ examId }: { examId: string }) {
           <dl className="receipt-details">
             <div>
               <dt>Opens</dt>
-              <dd>{date(exam.schedule.start)}</dd>
+              <dd>{examDate(exam.schedule.start, exam.schedule.timeZone)}</dd>
             </div>
             <div>
               <dt>Closes</dt>
-              <dd>{date(exam.schedule.end)}</dd>
+              <dd>{examDate(exam.schedule.end, exam.schedule.timeZone)}</dd>
             </div>
             <div>
               <dt>Configured time zone</dt>

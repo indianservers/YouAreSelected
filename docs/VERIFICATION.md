@@ -1,47 +1,28 @@
-# Phase 1 verification
+# Phase 2 verification
 
-Executed locally on **20 October 2026 (Asia/Kolkata)** with Node.js 24.13.1, npm 11.8.0, Next.js 16.4.2 and Chromium through Playwright 1.64.1.
+Executed locally on 20 October 2026 with Node.js 24.13.1, Next.js 16.4.2 and Chromium through Playwright.
 
-| Check                  | Outcome                                                                                                                           |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run typecheck`    | Passed, strict TypeScript, no errors                                                                                              |
-| `npm run lint`         | Passed, no errors or warnings                                                                                                     |
-| `npm test`             | Passed: 18 tests in 6 files                                                                                                       |
-| `npm run build`        | Passed; all public, student and admin route groups compiled                                                                       |
-| `npm run test:e2e`     | Passed: 5 Chromium journeys against the local development server                                                                  |
-| Production server      | Built and started successfully with `npm start -- --port 3001`                                                                    |
-| `npm audit --omit=dev` | 0 runtime vulnerabilities                                                                                                         |
-| Visual inspection      | Student dashboard, login, admin overview and mobile examination screenshots reviewed; desktop, tablet and phone layouts exercised |
+| Check | Outcome |
+| --- | --- |
+| TypeScript | Passed, strict type checking |
+| ESLint | Passed |
+| Unit/component/database tests | 20 passed in 5 files |
+| Production build | Passed; authenticated pages and backend routes are dynamic |
+| Chromium integration tests | 3 passed against disposable real PostgreSQL |
+| Runtime dependency audit | Zero vulnerabilities (`npm audit --omit=dev`) |
 
-The same **5 browser journeys also passed against the production build** on port 3001 (22.2 seconds). Set `PLAYWRIGHT_BASE_URL=http://localhost:3001` to run the suite against an already-running production server. Type checking generates Next.js route types first so it also works in a fresh checkout.
+The browser harness creates a fresh UTF-8 local PostgreSQL instance. It executes database inspection, migration planning, migration twice, schema verification, health check, admin bootstrap twice and explicit sample seed twice before starting the application. No provider credentials or production records are used. Unit database tests execute the migration independently using PGlite.
 
-## Automated coverage
+Coverage includes registration, pending approval, role injection rejection, approval, examination authoring/publication, assignments, scheduling, persisted answers across browsers and refresh, offline retry, server deadlines, immutable snapshots, private answer keys, result publication/withholding, spreadsheet output, password changes, logout, session revocation, suspension and ownership checks. Concurrent starts, answer/submission races, duplicate submission, stale revisions, expiration, attempt limits and database constraints are exercised. Mobile overflow is checked. This is targeted integration coverage, not a load test or complete accessibility audit.
 
-**Unit/component tests:** all correct, all incorrect, all unattempted, mixed responses, negative marking, unequal marks, inclusive pass thresholds, invalid/missing responses, empty exam, section totals, approval/assignment/publication/window eligibility, invalid exam/question configuration, login/logout, duplicate registration, unapproved assignment rejection, deadline stability, immutable question snapshots, duplicate submission, read-only responses, release/withhold, expired attempts, reset, randomized option identity and sequential sections, CSV escaping and formula-injection neutralization, invalid persisted-data fallback schema, accessible tabs and confirmation dialogs.
+## Incomplete operational requirements
 
-**Browser journeys:**
+- Neon connectivity and migration have **not** been verified: this workspace has no configured `.env.local` or database environment variables. The earlier chat credentials were not copied into files. Configure the ignored environment file using the instructions in README before running provider checks.
+- The intended Neon database still needs inspection, migration planning/application, health/schema verification and deliberate administrator bootstrap. Local database results do not establish provider success.
+- Real reset email delivery requires a configured provider and verified sender. The unavailable-provider error is tested; actual mail delivery is not.
+- Vercel deployment and production-cookie/provider verification remain outstanding. Build success does not establish deployment success.
+- Workspace lists are bounded to 1,000 users, 500 exams, 10,000 assignments and 2,000 attempts. User/assignment selection is server-paginated; reports independently query up to 10,000 rows. Exam/result library pagination and reducing per-record workspace queries remain scale limitations. Larger installations need that work before rollout.
+- Five high-severity development-only transitive findings remain in the ESLint dependency chain; runtime audit is clean. No forced incompatible dependency upgrades were applied.
+- Phase 3 security/load/performance/accessibility/observability/backup and production verification has not begun.
 
-1. Student login, unavailable exam rejection, instructions, start, answer selection/change/clear, review flag, next/previous, refreshed answers and deadline, confirmation and submission, pending results, admin release, CSV and XLSX downloads, reading both downloaded files and checking their scores/counts against the displayed result, student answer review, withholding and hidden results again.
-2. Registration, admin approval, examination draft creation, MCQ creation, correct-answer persistence, question editing/duplication/deletion, publication, learner assignment, schedule save and the new examination appearing in the newly approved student's workspace.
-3. Refreshing an expired attempt automatically submits it; confirmed admin demo reset restores the seed and logs out.
-4. Invalid credentials, session restoration, profile editing, demo password change, mobile navigation and horizontal-overflow assertions.
-5. Public landing/login, all admin navigation destinations, desktop/tablet/mobile widths, mobile navigator drawer, section/question navigation and exam rendering. Uncaught browser page errors fail the suite.
-
-Viewport coverage includes **1440×1000**, **768×1024**, and **390×844**. Browser screenshots/traces/downloads live in ignored `test-results/`, not in Git. Tests use an isolated browser context for each journey.
-
-## Issues found and fixed during verification
-
-- Pinned TanStack Table to v8 because the current v9 major has a different API.
-- Fixed native number input step validation that silently prevented valid question marks from saving.
-- Corrected test locators for paginated learners, duplicate navigation labels and the Next.js route announcer.
-- Preserved the active question and absolute deadline across refreshes.
-- Validated stored snapshot shape before hydration and retained section order when section switching is restricted.
-- Kept admin creation controls available on small screens; added a sticky mobile attempt header/timer.
-
-## Limitations and dependency audit
-
-These are local checks, not a Vercel deployment verification, full accessibility audit, security audit or cross-browser certification. Firefox and WebKit were not run. Client-side timing/authentication/data release is inherently bypassable and intentionally remains a demo.
-
-`npm audit` reports **5 high-severity development-tooling findings**, traced through `eslint-config-next → @next/eslint-plugin-next → fast-glob → micromatch → braces` (GHSA-vfj7-8cjw-p6xm). The installed current braces release does not provide a fixed version; the suggested automatic fix would downgrade the Next.js lint configuration across major versions. No unsafe forced downgrade was applied. This dependency chain is absent from the production runtime audit. ExcelJS's transitive uuid dependency is overridden to 11.1.1; actual browser XLSX generation and reading were verified.
-
-Vercel remains an owner-side deployment step. No Vercel CLI or authenticated Vercel integration was available in this workspace, and no deployment URL is claimed. README contains the exact import/build/environment settings and post-deployment checklist. Phase 2 and Phase 3 remain deferred.
+See [PHASE_2.md](PHASE_2.md) for schema, APIs and timing/concurrency policies, and [README](../README.md) for environment variables, migration/bootstrap/seed commands and Vercel setup. No production database was modified by verification.

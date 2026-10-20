@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useDemo } from "@/lib/mock/store";
+import { usePlatform } from "@/lib/client/store";
 import { date, duration } from "@/lib/utils";
 import { MathText } from "@/components/math-text";
 import {
@@ -28,7 +28,7 @@ import {
   StatCard,
 } from "@/components/ui";
 export function AttemptScreen({ examId }: { examId: string }) {
-  const store = useDemo();
+  const store = usePlatform();
   const router = useRouter();
   const exam = store.data.exams.find((e) => e.id === examId);
   const attempt = store.data.attempts
@@ -44,11 +44,32 @@ export function AttemptScreen({ examId }: { examId: string }) {
   const attemptId = attempt?.id;
   const attemptStatus = attempt?.status;
   const questionId = question?.id;
+  const nextSubmit = useRef(0);
+  useEffect(() => {
+    if (!store.pendingSaves && !store.error) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [store.pendingSaves, store.error]);
   useEffect(() => {
     if (!attempt || attempt.status === "submitted") return;
     const tick = () => {
-      setNow(Date.now());
-      if (Date.now() >= Date.parse(attempt.deadline)) submit(attempt.id);
+      const current = Date.now() + store.clockOffset;
+      setNow(current);
+      if (
+        current >= Date.parse(attempt.deadline) &&
+        Date.now() > nextSubmit.current
+      ) {
+        nextSubmit.current = Date.now() + 10000;
+        void submit(attempt.id).catch(() =>
+          toast.error(
+            "Connection unavailable. The server deadline still applies. Reconnecting…",
+          ),
+        );
+      }
     };
     tick();
     const interval = setInterval(tick, 1000);
@@ -59,7 +80,14 @@ export function AttemptScreen({ examId }: { examId: string }) {
       window.removeEventListener("focus", tick);
       document.removeEventListener("visibilitychange", tick);
     };
-  }, [attempt?.id, attempt?.deadline, attempt?.status, submit, attempt]);
+  }, [
+    attempt?.id,
+    attempt?.deadline,
+    attempt?.status,
+    submit,
+    attempt,
+    store.clockOffset,
+  ]);
   useEffect(() => {
     if (attempt?.status === "submitted")
       router.replace(`/student/exams/${examId}/submitted`);
@@ -106,12 +134,12 @@ export function AttemptScreen({ examId }: { examId: string }) {
   const section = attempt.sections.find((s) => s.id === question.sectionId);
   const move = (next: number) => {
     if (next < 0 || next >= attempt.questions.length) return;
-    if (!exam.allowRevisit && next < index) {
+    if (!(attempt.allowRevisit ?? exam.allowRevisit) && next < index) {
       toast.error("Revisiting previous questions is disabled.");
       return;
     }
     if (
-      !exam.allowSections &&
+      !(attempt.allowSections ?? exam.allowSections) &&
       attempt.questions[next].sectionId !== question.sectionId &&
       next !== index + 1
     ) {
@@ -121,15 +149,15 @@ export function AttemptScreen({ examId }: { examId: string }) {
     setIndex(next);
     setDrawer(false);
   };
-  const finish = () => {
-    store.submit(attempt.id);
+  const finish = async () => {
+    await store.submit(attempt.id);
     toast.success("Your examination has been submitted.");
   };
   return (
     <>
       <div className="attempt-header">
         <div>
-          <span className="eyebrow">FOCUS MODE · BROWSER DEMO</span>
+          <span className="eyebrow">FOCUS MODE · SERVER-TIMED EXAMINATION</span>
           <h1>{exam.title}</h1>
           <p>
             {section?.name} <span>·</span> {answered} of{" "}
@@ -284,7 +312,13 @@ export function AttemptScreen({ examId }: { examId: string }) {
               <ArrowLeft size={16} />
               Previous
             </Button>
-            <span>Changes saved in this browser</span>
+            <span role="status">
+              {store.pendingSaves
+                ? "Saving responses…"
+                : store.error
+                  ? "A response needs your attention"
+                  : "Responses saved to the server"}
+            </span>
             <Button
               onClick={() =>
                 index < attempt.questions.length - 1
@@ -391,8 +425,8 @@ export function AttemptScreen({ examId }: { examId: string }) {
       </div>
       <div className="exam-footnote">
         <ShieldCheck size={14} />
-        Client-side demo timing · Your deadline persists on refresh · Submission
-        is final
+        Server-authoritative timing · Your deadline persists across devices ·
+        Submission is final
       </div>
       <ConfirmDialog
         open={confirm}
@@ -421,7 +455,7 @@ export function AttemptScreen({ examId }: { examId: string }) {
   );
 }
 export function SubmittedScreen({ examId }: { examId: string }) {
-  const { data, sessionId } = useDemo();
+  const { data, sessionId } = usePlatform();
   const attempt = data.attempts
     .filter(
       (a) =>

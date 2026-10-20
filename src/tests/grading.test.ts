@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { grade } from "@/lib/grading";
-import { seed } from "@/lib/mock/seed";
+import { seed } from "@/server/sample-content";
 import type { StudentResponse } from "@/types/domain";
 const exam = seed().exams[0];
 const response = (questionId: string, optionId?: string): StudentResponse => ({

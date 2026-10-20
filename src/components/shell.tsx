@@ -24,7 +24,7 @@ import {
   BarChart3,
   UserRound,
 } from "lucide-react";
-import { useDemo } from "@/lib/mock/store";
+import { usePlatform } from "@/lib/client/store";
 import { Avatar, Badge, LoadingSkeleton } from "./ui";
 export function Brand() {
   return (
@@ -46,7 +46,7 @@ export function Shell({
   role: "admin" | "student";
   children: ReactNode;
 }) {
-  const state = useDemo();
+  const state = usePlatform();
   const router = useRouter();
   const pathname = usePathname();
   const [mobile, setMobile] = useState(false);
@@ -151,7 +151,7 @@ export function Shell({
               <LifeBuoy size={20} />
             </span>
             <strong>A little help goes a long way.</strong>
-            <p>Questions about your demo?</p>
+            <p>Questions about your account?</p>
             <a href={`mailto:${state.data.settings.supportEmail}`}>
               Contact support <ArrowUpRight size={14} />
             </a>
@@ -175,8 +175,8 @@ export function Shell({
               aria-label="Log out"
               title="Log out"
               className="icon-button"
-              onClick={() => {
-                state.logout();
+              onClick={async () => {
+                await state.logout();
                 router.push("/login");
               }}
             >
@@ -209,7 +209,7 @@ export function Shell({
           <div className="header-right">
             <span className="demo-label">
               <span />
-              Demo Environment
+              Connected workspace
             </span>
             <form
               className="header-search"
@@ -249,7 +249,7 @@ export function Shell({
                   >
                     View updates <ArrowUpRight size={14} />
                   </Link>
-                  <small>Derived from this browser’s demo data.</small>
+                  <small>Updates from your examination workspace.</small>
                 </div>
               )}
             </div>
@@ -268,11 +268,26 @@ export function Shell({
               administrator approval. Examination access is restricted.
             </div>
           )}
+          {state.error && (
+            <div className="notice" role="alert">
+              {state.error}
+              <button
+                onClick={() =>
+                  void state
+                    .load()
+                    .then(() => state.retrySaves())
+                    .catch(() => {})
+                }
+              >
+                Retry connection & saves
+              </button>
+            </div>
+          )}
           {children}
           <footer className="app-footer">
             <span>© {new Date().getFullYear()} YouAreSelected</span>
             <span>A little practice. A bigger future.</span>
-            <span>Phase 1 · Browser demo</span>
+            <span>Secure examination workspace</span>
           </footer>
         </main>
       </div>

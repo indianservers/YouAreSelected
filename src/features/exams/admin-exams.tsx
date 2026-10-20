@@ -19,8 +19,8 @@ import {
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { Exam } from "@/types/domain";
-import { useDemo } from "@/lib/mock/store";
-import { blankExam } from "@/lib/mock/seed";
+import { usePlatform } from "@/lib/client/store";
+import { blankExam } from "@/lib/exam-defaults";
 import { examErrors } from "@/lib/rules";
 import { date } from "@/lib/utils";
 import {
@@ -36,7 +36,7 @@ import {
   Tabs,
 } from "@/components/ui";
 export function ExamManagement() {
-  const store = useDemo();
+  const store = usePlatform();
   const params = useSearchParams();
   const [search, setSearch] = useState(params.get("q") ?? "");
   const [tab, setTab] = useState("All exams");
@@ -188,7 +188,7 @@ export function ExamNav({
   );
 }
 export function ExamEditor({ examId }: { examId?: string }) {
-  const store = useDemo();
+  const store = usePlatform();
   const router = useRouter();
   const existing = store.data.exams.find((e) => e.id === examId);
   const [exam, setExam] = useState<Exam>(() =>
@@ -210,11 +210,11 @@ export function ExamEditor({ examId }: { examId?: string }) {
     setExam((e) => ({ ...e, [key]: value }));
     setDirty(true);
   };
-  const save = (status: Exam["status"]) => {
+  const save = async (status: Exam["status"]) => {
     try {
       const value = { ...exam, status };
-      store.saveExam(value);
-      setExam(value);
+      const saved = await store.saveExam(value);
+      setExam(saved);
       setDirty(false);
       setErrors([]);
       toast.success(
@@ -258,8 +258,8 @@ export function ExamEditor({ examId }: { examId?: string }) {
             {existing && (
               <Button
                 variant="secondary"
-                onClick={() => {
-                  const copy = store.duplicateExam(exam.id);
+                onClick={async () => {
+                  const copy = await store.duplicateExam(exam.id);
                   router.push(`/admin/exams/${copy}/edit`);
                 }}
               >
@@ -272,7 +272,7 @@ export function ExamEditor({ examId }: { examId?: string }) {
       />
       {existing && <ExamNav examId={exam.id} active="edit" />}
       <form
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
           save(exam.status);
         }}
@@ -494,8 +494,8 @@ export function ExamEditor({ examId }: { examId?: string }) {
                 </label>
               ))}
               <div className="notice">
-                Auto-submit on timeout is always enabled in Phase 1. Results
-                require an explicit administrator release.
+                Auto-submit on timeout is always enabled. Results require an
+                explicit administrator release.
               </div>
             </div>
           </section>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { seed } from "@/lib/mock/seed";
+import { seed } from "@/server/sample-content";
 import { eligibility, examErrors, questionErrors } from "@/lib/rules";
 describe("exam eligibility and validation", () => {
   it("permits only approved, assigned, published exams within a valid window", () => {

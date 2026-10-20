@@ -15,8 +15,8 @@ import {
   UserCheck,
   Users,
 } from "lucide-react";
-import { useDemo } from "@/lib/mock/store";
-import { date } from "@/lib/utils";
+import { usePlatform } from "@/lib/client/store";
+import { date, examDate } from "@/lib/utils";
 import {
   Avatar,
   Badge,
@@ -29,7 +29,7 @@ import {
 import { PerformanceChart } from "@/components/charts";
 export function AdminDashboard() {
   const now = useNow();
-  const { data } = useDemo();
+  const { data } = usePlatform();
   const users = data.users.filter((u) => u.role === "student");
   const pending = users.filter((u) => u.status === "pending");
   const submitted = data.attempts.filter((a) => a.status === "submitted");
@@ -39,10 +39,12 @@ export function AdminDashboard() {
       Date.parse(e.schedule.start) <= now &&
       Date.parse(e.schedule.end) > now,
   );
-  const participation = data.exams.map((e) => ({
-    name: e.code,
-    value: data.attempts.filter((a) => a.examId === e.id).length,
-  }));
+  const participation =
+    data.metrics?.participation ??
+    data.exams.map((e) => ({
+      name: e.code,
+      value: data.attempts.filter((a) => a.examId === e.id).length,
+    }));
   return (
     <>
       <PageHeader
@@ -76,36 +78,39 @@ export function AdminDashboard() {
       <div className="grid three stats-grid">
         <StatCard
           label="Total learners"
-          value={users.length}
-          detail="Registered in this demo workspace"
+          value={data.metrics?.totalUsers ?? users.length}
+          detail="Registered learners"
           icon={<Users size={18} />}
         />
         <StatCard
           label="Pending approvals"
-          value={pending.length}
+          value={data.metrics?.pendingUsers ?? pending.length}
           detail="Ready for your review"
           icon={<Clock3 size={18} />}
         />
         <StatCard
           label="Approved learners"
-          value={users.filter((u) => u.status === "approved").length}
+          value={
+            data.metrics?.approvedUsers ??
+            users.filter((u) => u.status === "approved").length
+          }
           detail="Eligible for exam assignments"
           icon={<UserCheck size={18} />}
         />
         <StatCard
           label="Total examinations"
-          value={data.exams.length}
+          value={data.metrics?.totalExams ?? data.exams.length}
           icon={<BookOpen size={18} />}
         />
         <StatCard
           label="Active examinations"
-          value={active.length}
+          value={data.metrics?.activeExams ?? active.length}
           detail="Published and within their window"
           icon={<CalendarDays size={18} />}
         />
         <StatCard
           label="Submitted attempts"
-          value={submitted.length}
+          value={data.metrics?.submittedAttempts ?? submitted.length}
           icon={<CheckCircle2 size={18} />}
         />
       </div>
@@ -116,7 +121,7 @@ export function AdminDashboard() {
               <h2>Participation at a glance</h2>
               <p>Started attempts by examination</p>
             </div>
-            <Badge tone="blue">Live demo data</Badge>
+            <Badge tone="blue">Live database data</Badge>
           </div>
           <div className="panel-body">
             <PerformanceChart data={participation} />
@@ -245,7 +250,8 @@ export function AdminDashboard() {
               <div>
                 <strong>{e.title}</strong>
                 <small>
-                  {date(e.schedule.start)} · {e.schedule.timeZone}
+                  {examDate(e.schedule.start, e.schedule.timeZone)} ·{" "}
+                  {e.schedule.timeZone}
                 </small>
               </div>
               <Badge>Upcoming</Badge>

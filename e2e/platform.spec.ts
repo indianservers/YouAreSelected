@@ -1,145 +1,46 @@
-import { test, expect, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import {
+  test,
+  expect,
+  type Page,
+  type APIRequestContext,
+} from "@playwright/test";
+import { randomBytes } from "node:crypto";
+import { Pool } from "pg";
 import ExcelJS from "exceljs";
+import { blankExam, blankQuestion } from "../src/lib/exam-defaults";
+const origin = "http://localhost:3000";
 test.beforeEach(async ({ page }) => {
   page.on("pageerror", (error) => {
     throw error;
   });
 });
-async function login(page: Page, role: "Student" | "Admin") {
+async function post(api: APIRequestContext, command: string, data: unknown) {
+  return api.post(`/api/platform/${command}`, {
+    data,
+    headers: { Origin: origin },
+  });
+}
+async function login(page: Page, email: string, password: string) {
   await page.goto("/login");
-  await page.getByRole("button", { name: `${role} demo` }).click();
+  await page.getByLabel("Email address", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in to your workspace" }).click();
-  await expect(page).toHaveURL(
-    role === "Admin" ? /\/admin$/ : /\/student\/dashboard$/,
-  );
   await expect(page.locator("#main-content h1").first()).toBeVisible();
 }
-async function logout(page: Page) {
-  await page.getByRole("button", { name: "Log out", exact: true }).click();
-  await expect(page).toHaveURL(/\/login$/);
-}
-test("student attempt persists across refresh, submits once, and waits for released results", async ({
+test("real registration, approval, questions, cross-browser attempt, private result and audited publication", async ({
+  browser,
   page,
 }) => {
-  await login(page, "Student");
-  await page.goto("/student/exams/exam-2/instructions");
-  await page.getByRole("checkbox").check();
-  await expect(
-    page.getByRole("button", { name: "Start examination" }),
-  ).toBeDisabled();
-  await page.goto("/student/exams/exam-1/instructions");
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Start examination" }).click();
-  await expect(page).toHaveURL(/\/attempt$/);
-  await page.getByRole("radio").nth(2).check();
-  await page.getByRole("radio").nth(1).check();
-  await page
-    .getByRole("button", { name: "Clear response", exact: true })
-    .click();
-  await expect(page.getByRole("radio").nth(1)).not.toBeChecked();
-  await page.getByRole("radio").nth(2).check();
-  await page
-    .getByRole("button", { name: "Mark for review", exact: true })
-    .click();
-  const deadline = await page.evaluate(
-    () =>
-      JSON.parse(localStorage.getItem("yas-demo-v1")!).state.data.attempts[0]
-        .deadline,
-  );
-  await page.getByRole("button", { name: "Save & next", exact: true }).click();
-  await page.getByRole("radio").nth(1).check();
-  await page.getByRole("button", { name: "Previous", exact: true }).click();
-  await page.reload();
-  await expect(page.getByRole("radio").nth(2)).toBeChecked();
-  expect(
-    await page.evaluate(
-      () =>
-        JSON.parse(localStorage.getItem("yas-demo-v1")!).state.data.attempts[0]
-          .deadline,
-    ),
-  ).toBe(deadline);
-  await page.getByRole("button", { name: "Submit exam", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("2");
-  await page
-    .getByRole("button", { name: "Submit examination", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Test submitted successfully." }),
-  ).toBeVisible();
-  await page.getByRole("link", { name: "View result status" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Results Awaiting Publication." }),
-  ).toBeVisible();
-  await page.reload();
-  await expect(
-    page.getByRole("heading", { name: "Results Awaiting Publication." }),
-  ).toBeVisible();
-  await logout(page);
-  await login(page, "Admin");
-  await page.goto("/admin/results/exam-1");
-  await page
-    .getByRole("button", { name: "Release results", exact: true })
-    .click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Release results", exact: true })
-    .click();
-  const csv = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export CSV" }).click();
-  const csvFile = await csv;
-  expect(csvFile.suggestedFilename()).toMatch(/\.csv$/);
-  expect(await readFile((await csvFile.path())!, "utf8")).toContain(
-    '"4","20","20","2","0","8"',
-  );
-  const excel = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export Excel" }).click();
-  const xlsxFile = await excel;
-  expect(xlsxFile.suggestedFilename()).toMatch(/\.xlsx$/);
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile((await xlsxFile.path())!);
-  expect(workbook.worksheets[0].getCell("F2").value).toBe(4);
-  expect(workbook.worksheets[0].getCell("G2").value).toBe(20);
-  expect(workbook.worksheets[0].getCell("I2").value).toBe(2);
-  await logout(page);
-  await login(page, "Student");
-  await page.goto("/student/results");
-  await page.getByRole("link").filter({ hasText: "SSC CGL Mock Test" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Your answer sheet" }),
-  ).toBeVisible();
-  await expect(page.getByText("4 / 20 marks")).toBeVisible();
-  await logout(page);
-  await login(page, "Admin");
-  await page.goto("/admin/results/exam-1");
-  await page
-    .getByRole("button", { name: "Withhold results", exact: true })
-    .click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Withhold results", exact: true })
-    .click();
-  await logout(page);
-  await login(page, "Student");
-  await page.goto("/student/results");
-  await page.getByRole("link").filter({ hasText: "SSC CGL Mock Test" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Results Awaiting Publication." }),
-  ).toBeVisible();
-});
-test("registration, approval, exam creation, question editing, assignment and scheduling stay coherent", async ({
-  page,
-}) => {
+  const suffix = randomBytes(5).toString("hex"),
+    email = `learner-${suffix}@isolated.test`,
+    password = randomBytes(20).toString("base64url") + "Aa1!",
+    name = `Learner ${suffix}`;
   await page.goto("/register");
-  await page.getByLabel("Full name", { exact: true }).fill("New Demo Learner");
-  await page
-    .getByLabel("Email address", { exact: true })
-    .fill("newlearner@demo.test");
-  await page.getByLabel("Mobile number", { exact: true }).fill("9000000099");
-  await page.getByLabel("Password", { exact: true }).fill("Learner@12345");
-  await page
-    .getByLabel("Confirm password", { exact: true })
-    .fill("Learner@12345");
+  await page.getByLabel("Full name", { exact: true }).fill(name);
+  await page.getByLabel("Email address", { exact: true }).fill(email);
+  await page.getByLabel("Mobile number", { exact: true }).fill("9000000011");
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByLabel("Confirm password", { exact: true }).fill(password);
   await page.getByRole("checkbox").check();
   await page
     .getByRole("button", { name: "Create account", exact: true })
@@ -147,306 +48,587 @@ test("registration, approval, exam creation, question editing, assignment and sc
   await expect(
     page.getByRole("heading", { name: "Great things start here." }),
   ).toBeVisible();
-  await login(page, "Admin");
-  await page.goto("/admin/users");
-  await page
-    .getByRole("textbox", { name: "Search learners, email or mobile…" })
-    .fill("New Demo Learner");
-  await page
-    .getByRole("combobox", { name: "Change status for New Demo Learner" })
-    .selectOption("approved");
-  await page.getByRole("button", { name: "Update status" }).click();
+  console.info("Registration and approval workflow running.");
+  await login(page, email, password);
   await expect(
-    page.getByRole("row").filter({ hasText: "New Demo Learner" }),
-  ).toContainText("approved");
-  await page.goto("/admin/exams/new");
-  await page
+    page.getByText("Your account is awaiting administrator approval.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  expect((await post(page.request, "save-exam", {})).status()).toBe(403);
+  expect((await page.request.get("/api/reports")).status()).toBe(403);
+  const adminContext = await browser.newContext();
+  const admin = await adminContext.newPage();
+  await login(
+    admin,
+    process.env.E2E_ADMIN_EMAIL!,
+    process.env.E2E_ADMIN_PASSWORD!,
+  );
+  await admin.goto("/admin/users");
+  await admin
+    .getByRole("textbox", { name: "Search learners, email or mobile…" })
+    .fill(name);
+  await admin
+    .getByRole("combobox", { name: `Change status for ${name}` })
+    .selectOption("approved");
+  await admin
+    .getByRole("dialog")
+    .getByRole("button", { name: "Update status" })
+    .click();
+  await expect(admin.getByRole("row").filter({ hasText: email })).toContainText(
+    "approved",
+  );
+  await admin.goto("/admin/exams/new");
+  await admin
     .getByLabel("Exam title *", { exact: true })
-    .fill("Campus readiness assessment");
-  await page.getByLabel("Exam code *", { exact: true }).fill("CAMPUS-01");
-  await page
+    .fill(`Persistent assessment ${suffix}`);
+  await admin.getByLabel("Exam code *", { exact: true }).fill(`REAL-${suffix}`);
+  await admin
     .getByLabel("Description *", { exact: true })
-    .fill("A short assessment for new learners.");
-  await page.getByLabel("Category *", { exact: true }).fill("Campus");
-  await page.getByLabel("Subject *", { exact: true }).fill("Aptitude");
-  await page.getByRole("button", { name: "Save draft", exact: true }).click();
-  await expect(page).toHaveURL(/\/edit$/);
-  const examPath = new URL(page.url()).pathname.replace("/edit", "");
-  await page
+    .fill("An isolated persistent test.");
+  await admin.getByLabel("Category *", { exact: true }).fill("Aptitude");
+  await admin.getByLabel("Subject *", { exact: true }).fill("Math");
+  await admin.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect(admin).toHaveURL(/\/edit$/);
+  const examId = new URL(admin.url()).pathname.split("/")[3];
+  await admin
     .locator(".exam-admin-nav")
     .getByRole("link", { name: "Question bank", exact: true })
     .click();
-  await page.getByRole("button", { name: "Add question", exact: true }).click();
-  await page
+  await admin
+    .getByRole("button", { name: "Add question", exact: true })
+    .click();
+  await admin
     .getByLabel("Question text *", { exact: true })
     .fill("What is 2 + 2?");
   for (const [i, value] of ["3", "4", "5", "6"].entries())
-    await page
+    await admin
       .getByRole("textbox", {
         name: `Option ${String.fromCharCode(65 + i)} text`,
         exact: true,
       })
       .fill(value);
-  await page
+  await admin
     .getByRole("radio", { name: "Option B is correct", exact: true })
     .check();
-  await page
+  await admin
     .getByLabel("Explanation", { exact: true })
     .fill("Two plus two equals four.");
-  await page
+  await admin
     .getByRole("button", { name: "Save question", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "What is 2 + 2?", exact: true }),
+    admin.getByRole("button", { name: "What is 2 + 2?", exact: true }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "What is 2 + 2?", exact: true })
-    .click();
-  await expect(
-    page.getByRole("radio", { name: "Option B is correct", exact: true }),
-  ).toBeChecked();
-  await page
-    .getByLabel("Question text *", { exact: true })
-    .fill("What is the sum of 2 and 2?");
-  await page
-    .getByRole("button", { name: "Save question", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Duplicate question 1", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Delete question 2", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Delete question", exact: true })
-    .click();
-  await page.goto(`${examPath}/edit`);
-  await page
+  await admin.goto(`/admin/exams/${examId}/edit`);
+  await admin
     .getByRole("button", { name: "Publish examination", exact: true })
     .click();
   await expect(
-    page.getByText("Examination published.", { exact: true }),
+    admin.getByText("Examination published.", { exact: true }),
   ).toBeVisible();
-  await page.goto(`${examPath}/assignments`);
-  await page
+  await admin.goto(`/admin/exams/${examId}/assignments`);
+  await admin
     .getByRole("textbox", { name: "Search learners…", exact: true })
-    .fill("New Demo Learner");
-  await page
-    .getByRole("checkbox", { name: "Assign New Demo Learner", exact: true })
+    .fill(name);
+  await admin
+    .getByRole("checkbox", { name: `Assign ${name}`, exact: true })
     .check();
-  await page.getByRole("button", { name: /Assign selected/ }).click();
-  await expect(
-    page.getByRole("row").filter({ hasText: "New Demo Learner" }),
-  ).toContainText("Assigned");
-  await page.goto(`${examPath}/schedule`);
-  await page
-    .getByRole("button", { name: "Save schedule", exact: true })
-    .click();
-  await expect(
-    page.getByText("Schedule updated. Student eligibility is now in sync.", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await logout(page);
-  await page
-    .getByLabel("Email address", { exact: true })
-    .fill("newlearner@demo.test");
-  await page.getByLabel("Password", { exact: true }).fill("Learner@12345");
-  await page.getByRole("button", { name: "Sign in to your workspace" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Campus readiness assessment" }),
-  ).toBeVisible();
-});
-test("automatic deadline submission survives refresh and reset restores the demo", async ({
-  page,
-}) => {
-  await login(page, "Student");
-  await page.goto("/student/exams/exam-1/instructions");
+  await admin.getByRole("button", { name: /Assign selected/ }).click();
+  await expect(admin.getByRole("row").filter({ hasText: email })).toContainText(
+    "Assigned",
+  );
+  await page.goto(`/student/exams/${examId}/instructions`);
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Start examination" }).click();
   await expect(page).toHaveURL(/\/attempt$/);
-  await page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem("yas-demo-v1")!);
-    state.state.data.attempts[0].deadline = new Date(
-      Date.now() - 5000,
-    ).toISOString();
-    localStorage.setItem("yas-demo-v1", JSON.stringify(state));
-  });
+  await expect(
+    page.getByRole("heading", { name: "What is 2 + 2?" }),
+  ).toBeVisible();
+  await page.getByRole("radio").nth(1).check();
+  await expect(page.getByRole("radio").nth(1)).toBeChecked();
+  await expect(
+    page.getByText("Responses saved to the server", { exact: true }),
+  ).toBeVisible();
+  await page.context().setOffline(true);
+  await page.getByRole("radio").nth(0).check();
+  await expect(page.getByRole("radio").nth(0)).toBeChecked();
+  await page.context().setOffline(false);
+  await expect(
+    page.getByText("Responses saved to the server", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("radio").nth(1).check();
+  await expect(
+    page.getByText("Responses saved to the server", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Mark for review", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Marked for review", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Responses saved to the server", { exact: true }),
+  ).toBeVisible();
+  console.info("Exam response saved; verifying persistence.");
+  const ws = await (await page.request.get("/api/platform/workspace")).json();
+  const attempt = ws.data.attempts.find(
+    (a: { examId: string }) => a.examId === examId,
+  );
+  expect(JSON.stringify(ws)).not.toMatch(
+    /correctOptionId|explanation|password_hash/,
+  );
+  const starts = await Promise.all([
+    post(page.request, "start", { examId }),
+    post(page.request, "start", { examId }),
+  ]);
+  for (const response of starts) {
+    expect(response.status()).toBe(200);
+    expect((await response.json()).result.id).toBe(attempt.id);
+  }
   await page.reload();
+  await expect(page.getByRole("radio").nth(1)).toBeChecked();
+  const deadline = (
+    await (await page.request.get("/api/platform/workspace")).json()
+  ).data.attempts.find((a: { id: string }) => a.id === attempt.id).deadline;
+  expect(deadline).toBe(attempt.deadline);
+  const second = await browser.newContext();
+  const secondPage = await second.newPage();
+  await login(secondPage, email, password);
+  await secondPage.goto(`/student/exams/${examId}/attempt`);
+  await expect(secondPage.getByRole("radio").nth(1)).toBeChecked();
+  await page.getByRole("button", { name: "Submit exam", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Submit examination", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Test submitted successfully." }),
   ).toBeVisible();
-  await logout(page);
-  await login(page, "Admin");
-  await page.goto("/admin/settings");
-  await page
-    .getByRole("button", { name: "Reset Demo Data", exact: true })
-    .click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Reset demo data", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/login$/);
-});
-test("invalid login, restored session, profile edits and mobile layouts", async ({
-  page,
-}) => {
-  await page.goto("/login");
-  await page
-    .getByLabel("Email address", { exact: true })
-    .fill("student@demo.test");
-  await page.getByLabel("Password", { exact: true }).fill("wrong");
-  await page.getByRole("button", { name: "Sign in to your workspace" }).click();
+  const duplicate = await Promise.all([
+    post(page.request, "submit", { attemptId: attempt.id }),
+    post(page.request, "submit", { attemptId: attempt.id }),
+  ]);
+  expect(duplicate.every((r) => r.status() === 200)).toBe(true);
+  const submitted = (
+    await (await page.request.get("/api/platform/workspace")).json()
+  ).data.attempts.find((a: { id: string }) => a.id === attempt.id);
+  expect(submitted.result).toBeUndefined();
+  expect(submitted.publication.released).toBe(false);
+  expect(
+    (
+      await post(page.request, "respond", {
+        attemptId: attempt.id,
+        questionId: attempt.questions[0].id,
+        revision: submitted.revision,
+        patch: { optionId: null },
+      })
+    ).status(),
+  ).toBe(409);
+  await page.getByRole("link", { name: "View result status" }).click();
   await expect(
-    page.getByRole("alert").filter({ hasText: "incorrect" }),
+    page.getByRole("heading", { name: "Results Awaiting Publication." }),
   ).toBeVisible();
-  await login(page, "Student");
+  await admin.goto(`/admin/results/${examId}`);
+  await admin
+    .getByRole("button", { name: "Release results", exact: true })
+    .click();
+  await admin
+    .getByRole("dialog")
+    .getByRole("button", { name: "Release results", exact: true })
+    .click();
+  await expect(
+    admin.getByText("Results published.", { exact: true }),
+  ).toBeVisible();
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: /Let’s make progress/ }),
+    page.getByRole("heading", { name: "Your answer sheet" }),
   ).toBeVisible();
-  await page.goto("/student/profile");
-  await page.getByLabel("Full name", { exact: true }).fill("Arjun Demo");
-  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByText("2 / 2 marks")).toBeVisible();
+  const download = admin.waitForEvent("download");
+  await admin.getByRole("button", { name: "Export Excel" }).click();
+  const file = await download;
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.readFile((await file.path())!);
+  expect(book.worksheets[0].getCell("F2").value).toBe(2);
+  // Assert persisted database records, independent of UI messages and browser state.
+  const pool = new Pool({
+    connectionString: "postgresql://postgres:postgres@127.0.0.1:55432/postgres",
+    max: 1,
+  });
+  try {
+    const stored = (
+      await pool.query(
+        "SELECT a.status,r.earned_marks,r.correct_count,r.publication_status FROM yas.exam_attempts a JOIN yas.exam_results r ON r.attempt_id=a.id WHERE a.id=$1",
+        [attempt.id],
+      )
+    ).rows[0];
+    expect(stored.status).toBe("submitted");
+    expect(Number(stored.earned_marks)).toBe(2);
+    expect(stored.correct_count).toBe(1);
+    expect(stored.publication_status).toBe("published");
+    expect(
+      Number(
+        (
+          await pool.query(
+            "SELECT count(*) AS n FROM yas.exam_attempts WHERE exam_id=$1",
+            [examId],
+          )
+        ).rows[0].n,
+      ),
+    ).toBe(1);
+    expect(
+      Number(
+        (
+          await pool.query(
+            "SELECT count(*) AS n FROM yas.audit_logs WHERE entity_id=$1 AND action='results.published'",
+            [examId],
+          )
+        ).rows[0].n,
+      ),
+    ).toBe(1);
+  } finally {
+    await pool.end();
+  }
+  await admin
+    .getByRole("button", { name: "Withhold results", exact: true })
+    .click();
+  await admin
+    .getByRole("dialog")
+    .getByRole("button", { name: "Withhold results", exact: true })
+    .click();
+  await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Arjun Demo", exact: true }),
+    page.getByRole("heading", { name: "Results Awaiting Publication." }),
   ).toBeVisible();
-  await page
-    .getByLabel("Current demo password", { exact: true })
-    .fill("Student@12345");
-  await page
-    .getByLabel("New demo password", { exact: true })
-    .fill("Changed@12345");
-  await page
-    .getByLabel("Confirm new password", { exact: true })
-    .fill("Changed@12345");
-  await page.getByRole("button", { name: "Update demo password" }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/student/dashboard");
-  await expect(
-    page.getByRole("button", { name: "Open navigation" }),
-  ).toBeVisible();
   expect(
     await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
+      () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.getByRole("button", { name: "Open navigation" }).click();
-  await page
-    .getByRole("link", { name: "My examinations", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/student\/exams$/);
   await page.screenshot({
-    path: "test-results/student-mobile.png",
-    fullPage: true,
-  });
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/student/dashboard");
-  await expect(page.locator(".workspace")).toHaveCSS("margin-left", "238px");
-  await page.screenshot({
-    path: "test-results/student-desktop.png",
+    path: "test-results/phase2-student-mobile.png",
     fullPage: true,
     animations: "disabled",
   });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/student/profile");
+  const changed = randomBytes(24).toString("base64url");
+  await page.getByLabel("Current password", { exact: true }).fill(password);
+  await page.getByLabel("New password", { exact: true }).fill(changed);
+  await page.getByLabel("Confirm new password", { exact: true }).fill(changed);
+  await page
+    .getByRole("button", { name: "Update password", exact: true })
+    .click();
+  await expect(
+    page.getByText("Password changed. Other sessions have been revoked.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect((await second.request.get("/api/platform/workspace")).status()).toBe(
+    401,
+  );
+  await page.getByRole("button", { name: "Log out", exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  expect((await page.request.get("/api/platform/workspace")).status()).toBe(
+    401,
+  );
+  await second.close();
+  await adminContext.close();
 });
-test("public, admin and exam views render at desktop, tablet and mobile widths", async ({
+test("anonymous access, invalid credentials, CSRF and unconfigured reset email fail safely", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "A little practice. A bigger future." }),
-  ).toBeVisible();
-  await page.screenshot({
-    path: "test-results/home-desktop.png",
-    fullPage: true,
-    animations: "disabled",
-  });
-  await page.goto("/login");
-  await page.screenshot({
-    path: "test-results/login-desktop.png",
-    fullPage: true,
-    animations: "disabled",
-  });
-  await login(page, "Admin");
-  await page.screenshot({
-    path: "test-results/admin-desktop.png",
-    fullPage: true,
-    animations: "disabled",
-  });
-  for (const route of [
-    "/admin/users",
-    "/admin/exams",
-    "/admin/questions",
-    "/admin/assignments",
-    "/admin/results",
-    "/admin/reports",
-    "/admin/settings",
-    "/admin/exams/exam-1/edit",
-    "/admin/exams/exam-1/schedule",
-    "/admin/exams/exam-1/assignments",
-  ]) {
-    const response = await page.goto(route);
-    expect(response?.status()).toBe(200);
-    await expect(page.locator("#main-content h1").first()).toBeVisible();
-  }
-  await page.setViewportSize({ width: 768, height: 1024 });
+  expect((await page.request.get("/api/platform/workspace")).status()).toBe(
+    401,
+  );
+  expect((await page.request.get("/api/reports")).status()).toBe(401);
   await page.goto("/admin");
-  await expect(page.locator(".workspace")).toHaveCSS("margin-left", "210px");
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
-  await page.screenshot({
-    path: "test-results/admin-tablet.png",
-    fullPage: true,
-    animations: "disabled",
+  await expect(page).toHaveURL(/\/login$/);
+  const invalid = await page.request.post("/api/auth/sign-in/email", {
+    data: { email: "missing@isolated.test", password: "unrecognized-password" },
+    headers: { Origin: origin },
   });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/admin/users");
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
-  await page.screenshot({
-    path: "test-results/admin-mobile.png",
-    fullPage: true,
-    animations: "disabled",
+  expect(invalid.status()).toBe(401);
+  const csrf = await page.request.post("/api/platform/settings", {
+    data: { organization: "Injected", supportEmail: "" },
+    headers: { Origin: "https://attacker.invalid" },
   });
-  await page.getByRole("button", { name: "Open navigation" }).click();
-  await logout(page);
-  await login(page, "Student");
-  await page.goto("/student/exams/exam-1/instructions");
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Start examination" }).click();
-  await expect(page).toHaveURL(/\/attempt$/);
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
-  await page.getByRole("button", { name: "Open question navigator" }).click();
+  expect(csrf.status()).toBe(403);
+  await page.goto("/forgot-password");
+  await page.getByLabel("Email address").fill("missing@isolated.test");
+  await page.getByRole("button", { name: "Request reset link" }).click();
   await expect(
-    page.getByRole("button", { name: "Question 2: unvisited", exact: true }),
+    page.getByRole("alert").filter({ hasText: "not configured" }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Question 2: unvisited", exact: true })
-    .click();
-  await expect(
-    page.getByText("QUESTION 2", { exact: false }).first(),
-  ).toBeVisible();
-  await page.screenshot({
-    path: "test-results/exam-mobile.png",
-    fullPage: true,
-    animations: "disabled",
+});
+test("database concurrency, ownership, deadlines, suspension and session expiry are enforced", async ({
+  browser,
+}) => {
+  const adminContext = await browser.newContext(),
+    admin = await adminContext.newPage();
+  await login(
+    admin,
+    process.env.E2E_ADMIN_EMAIL!,
+    process.env.E2E_ADMIN_PASSWORD!,
+  );
+  const first = await browser.newContext(),
+    second = await browser.newContext();
+  const firstPage = await first.newPage(),
+    secondPage = await second.newPage();
+  const suffix = randomBytes(5).toString("hex");
+  const password = randomBytes(24).toString("base64url");
+  const users = [];
+  for (const [i, context] of [first, second].entries()) {
+    const email = `negative-${i}-${suffix}@isolated.test`;
+    const registered = await context.request.post("/api/auth/sign-up/email", {
+      headers: { Origin: origin },
+      data: {
+        name: `Negative learner ${i}`,
+        email,
+        password,
+        confirmPassword: password,
+        phone: "9000000012",
+        role: "admin",
+        approvalStatus: "approved",
+      },
+    });
+    expect(registered.status()).toBe(200);
+    const body = await registered.json();
+    users.push({ id: body.user.id, email });
+  }
+  await login(firstPage, users[0].email, password);
+  await login(secondPage, users[1].email, password);
+  const own = (
+    await (await first.request.get("/api/platform/workspace")).json()
+  ).data.users[0];
+  expect(own.role).toBe("student");
+  expect(own.status).toBe("pending");
+  const value = blankExam();
+  value.title = `Concurrency ${suffix}`;
+  value.code = `CON-${suffix}`;
+  value.category = "Aptitude";
+  value.subject = "Math";
+  value.description = "Database concurrency fixture";
+  value.showReview = false;
+  const q = blankQuestion(value.sections[0].id);
+  q.text = "Two plus two?";
+  q.options = q.options.map((o, i) => ({ ...o, text: String(i + 3) }));
+  q.correctOptionId = "b";
+  q.explanation = "Private explanation.";
+  value.questions = [q];
+  value.status = "published";
+  let savedResponse = await post(admin.request, "save-exam", value);
+  expect(savedResponse.status()).toBe(200);
+  let exam = (await savedResponse.json()).result;
+  expect(
+    (
+      await post(admin.request, "assign", {
+        examId: exam.id,
+        userIds: [users[0].id],
+      })
+    ).status(),
+  ).toBe(400);
+  expect(
+    (await post(first.request, "start", { examId: exam.id })).status(),
+  ).toBe(403);
+  expect(
+    (
+      await post(admin.request, "user-status", {
+        ids: [users[0].id],
+        status: "approved",
+      })
+    ).status(),
+  ).toBe(200);
+  expect(
+    (await post(first.request, "start", { examId: exam.id })).status(),
+  ).toBe(403);
+  expect(
+    (
+      await post(admin.request, "assign", {
+        examId: exam.id,
+        userIds: [users[0].id],
+      })
+    ).status(),
+  ).toBe(200);
+  const future = {
+    ...exam,
+    schedule: {
+      ...exam.schedule,
+      start: new Date(Date.now() + 3600000).toISOString(),
+      end: new Date(Date.now() + 7200000).toISOString(),
+    },
+  };
+  savedResponse = await post(admin.request, "save-exam", future);
+  expect(savedResponse.status()).toBe(200);
+  exam = (await savedResponse.json()).result;
+  expect(
+    (await post(first.request, "start", { examId: exam.id })).status(),
+  ).toBe(403);
+  savedResponse = await post(admin.request, "save-exam", {
+    ...exam,
+    schedule: value.schedule,
   });
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await expect(page.locator(".workspace")).toHaveCSS("margin-left", "238px");
-  await page.screenshot({
-    path: "test-results/exam-desktop.png",
-    fullPage: true,
-    animations: "disabled",
+  expect(savedResponse.status()).toBe(200);
+  exam = (await savedResponse.json()).result;
+  const starts = await Promise.all(
+    Array.from({ length: 3 }, () =>
+      post(first.request, "start", { examId: exam.id }),
+    ),
+  );
+  const attempts = [];
+  for (const r of starts) {
+    expect(r.status()).toBe(200);
+    attempts.push((await r.json()).result);
+  }
+  expect(new Set(attempts.map((a) => a.id)).size).toBe(1);
+  const a = attempts[0];
+  expect(
+    (
+      await post(second.request, "respond", {
+        attemptId: a.id,
+        questionId: a.questions[0].id,
+        revision: 0,
+        patch: { optionId: a.questions[0].options[1].id },
+      })
+    ).status(),
+  ).toBe(404);
+  expect(
+    (await post(second.request, "submit", { attemptId: a.id })).status(),
+  ).toBe(404);
+  expect(
+    (await (await second.request.get("/api/platform/workspace")).json()).data
+      .attempts,
+  ).toEqual([]);
+  expect(
+    (
+      await post(first.request, "submit", { attemptId: a.id, score: 100 })
+    ).status(),
+  ).toBe(400);
+  const race = await Promise.all([
+    post(first.request, "respond", {
+      attemptId: a.id,
+      questionId: a.questions[0].id,
+      revision: 0,
+      patch: { optionId: a.questions[0].options[1].id },
+    }),
+    post(first.request, "submit", { attemptId: a.id }),
+    post(first.request, "submit", { attemptId: a.id }),
+  ]);
+  expect([200, 409]).toContain(race[0].status());
+  expect(race[1].status()).toBe(200);
+  expect(race[2].status()).toBe(200);
+  expect(
+    (await post(first.request, "start", { examId: exam.id })).status(),
+  ).toBe(403);
+  expect(
+    (
+      await post(admin.request, "release", {
+        examId: exam.id,
+        released: true,
+        attemptId: a.id,
+      })
+    ).status(),
+  ).toBe(200);
+  const published = (
+    await (await first.request.get("/api/platform/workspace")).json()
+  ).data.attempts[0];
+  expect(published.result).toBeDefined();
+  expect(JSON.stringify(published)).not.toMatch(
+    /correctOptionId|Private explanation/,
+  );
+  const copy = (
+    await (
+      await post(admin.request, "duplicate-exam", { examId: exam.id })
+    ).json()
+  ).result;
+  const activeCopy = (
+    await (
+      await post(admin.request, "save-exam", { ...copy, status: "published" })
+    ).json()
+  ).result;
+  expect(
+    (
+      await post(admin.request, "assign", {
+        examId: activeCopy.id,
+        userIds: [users[0].id],
+      })
+    ).status(),
+  ).toBe(200);
+  const expiring = (
+    await (await post(first.request, "start", { examId: activeCopy.id })).json()
+  ).result;
+  const pool = new Pool({
+    connectionString: "postgresql://postgres:postgres@127.0.0.1:55432/postgres",
+    max: 1,
   });
+  try {
+    await pool.query(
+      "UPDATE yas.exam_attempts SET started_at=now()-interval '3 minutes',expires_at=now()-interval '1 minute' WHERE id=$1",
+      [expiring.id],
+    );
+    await first.request.get("/api/platform/workspace");
+    const expired = (
+      await pool.query(
+        "SELECT status,submission_reason FROM yas.exam_attempts WHERE id=$1",
+        [expiring.id],
+      )
+    ).rows[0];
+    expect(expired).toMatchObject({
+      status: "submitted",
+      submission_reason: "expired",
+    });
+    expect(
+      Number(
+        (
+          await pool.query(
+            "SELECT count(*) AS n FROM yas.exam_results WHERE attempt_id=$1",
+            [a.id],
+          )
+        ).rows[0].n,
+      ),
+    ).toBe(1);
+    const responseCount = Number(
+      (
+        await pool.query(
+          "SELECT count(*) AS n FROM yas.student_responses WHERE attempt_id=$1",
+          [a.id],
+        )
+      ).rows[0].n,
+    );
+    const score = Number(
+      (
+        await pool.query(
+          "SELECT earned_marks FROM yas.exam_results WHERE attempt_id=$1",
+          [a.id],
+        )
+      ).rows[0].earned_marks,
+    );
+    expect(score).toBe(responseCount ? 2 : 0);
+    await pool.query(
+      "UPDATE yas.auth_sessions SET expires_at=now()-interval '1 minute' WHERE user_id=$1",
+      [users[1].id],
+    );
+    expect((await second.request.get("/api/platform/workspace")).status()).toBe(
+      401,
+    );
+  } finally {
+    await pool.end();
+  }
+  expect(
+    (
+      await post(admin.request, "user-status", {
+        ids: [users[0].id],
+        status: "suspended",
+      })
+    ).status(),
+  ).toBe(200);
+  expect((await first.request.get("/api/platform/workspace")).status()).toBe(
+    401,
+  );
+  await first.close();
+  await second.close();
+  await adminContext.close();
 });

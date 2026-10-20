@@ -145,7 +145,7 @@ export function StatCard({
         <span className="stat-icon">{icon}</span>
       </div>
       <strong>{value}</strong>
-      <small>{detail ?? "Across your demo workspace"}</small>
+      <small>{detail ?? "Across your workspace"}</small>
     </div>
   );
 }
@@ -197,10 +197,12 @@ export function ConfirmDialog({
   title: string;
   description?: string;
   children?: ReactNode;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   label?: string;
   destructive?: boolean;
 }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -211,15 +213,29 @@ export function ConfirmDialog({
             {description ?? "Review this action before continuing."}
           </Dialog.Description>
           {children}
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
           <div className="dialog-actions">
             <Button variant="secondary" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button
               variant={destructive ? "danger" : "primary"}
-              onClick={() => {
-                onConfirm();
-                onOpenChange(false);
+              disabled={pending}
+              onClick={async () => {
+                setPending(true);
+                setError("");
+                try {
+                  await onConfirm();
+                  onOpenChange(false);
+                } catch (e) {
+                  setError((e as Error).message);
+                } finally {
+                  setPending(false);
+                }
               }}
             >
               {label}
@@ -305,10 +321,17 @@ export function DataTable<T>({
   columns,
   data,
   search = "",
+  server,
 }: {
   columns: ColumnDef<T>[];
   data: T[];
   search?: string;
+  server?: {
+    page: number;
+    pageSize: number;
+    total: number;
+    onPage: (page: number) => void;
+  };
 }) {
   // TanStack v8 owns mutable table accessors; opt this component out of React Compiler memoization.
   "use no memo";
@@ -317,13 +340,16 @@ export function DataTable<T>({
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, globalFilter: search },
+    state: { sorting, globalFilter: server ? "" : search },
+    manualPagination: !!server,
+    manualFiltering: !!server,
+    enableSorting: !server,
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 8 } },
+    initialState: { pagination: { pageSize: server?.pageSize ?? 8 } },
   });
   return (
     <div>
@@ -381,24 +407,37 @@ export function DataTable<T>({
       )}
       <div className="pagination">
         <span>
-          {table.getFilteredRowModel().rows.length} records · Page{" "}
-          {table.getState().pagination.pageIndex + 1} of{" "}
-          {Math.max(1, table.getPageCount())}
+          {server?.total ?? table.getFilteredRowModel().rows.length} records ·
+          Page {server?.page ?? table.getState().pagination.pageIndex + 1} of{" "}
+          {Math.max(
+            1,
+            server
+              ? Math.ceil(server.total / server.pageSize)
+              : table.getPageCount(),
+          )}
         </span>
         <div>
           <Button
             variant="secondary"
-            disabled={!table.getCanPreviousPage()}
+            disabled={server ? server.page <= 1 : !table.getCanPreviousPage()}
             aria-label="Previous page"
-            onClick={() => table.previousPage()}
+            onClick={() =>
+              server ? server.onPage(server.page - 1) : table.previousPage()
+            }
           >
             <ChevronLeft size={16} />
           </Button>
           <Button
             variant="secondary"
-            disabled={!table.getCanNextPage()}
+            disabled={
+              server
+                ? server.page * server.pageSize >= server.total
+                : !table.getCanNextPage()
+            }
             aria-label="Next page"
-            onClick={() => table.nextPage()}
+            onClick={() =>
+              server ? server.onPage(server.page + 1) : table.nextPage()
+            }
           >
             <ChevronRight size={16} />
           </Button>

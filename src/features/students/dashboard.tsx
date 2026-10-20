@@ -20,9 +20,9 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useDemo } from "@/lib/mock/store";
+import { usePlatform } from "@/lib/client/store";
 import { examStatus } from "@/lib/rules";
-import { date } from "@/lib/utils";
+import { date, examDate } from "@/lib/utils";
 import type { Exam } from "@/types/domain";
 import {
   Badge,
@@ -35,7 +35,7 @@ import {
   TextLink,
 } from "@/components/ui";
 export function ExamCard({ exam, index = 0 }: { exam: Exam; index?: number }) {
-  const { data, sessionId } = useDemo();
+  const { data, sessionId } = usePlatform();
   const status = examStatus(data, exam, sessionId ?? "");
   return (
     <motion.article
@@ -78,10 +78,19 @@ export function ExamCard({ exam, index = 0 }: { exam: Exam; index?: number }) {
         <div>
           <span>
             {status === "Upcoming" ? "Opens" : "Window opened"}{" "}
-            {date(exam.schedule.start, "dd MMM, hh:mm a")}
+            {examDate(
+              exam.schedule.start,
+              exam.schedule.timeZone,
+              "dd MMM, hh:mm a",
+            )}
           </span>
           <small>
-            Closes {date(exam.schedule.end, "dd MMM, hh:mm a")} · local time
+            Closes{" "}
+            {examDate(
+              exam.schedule.end,
+              exam.schedule.timeZone,
+              "dd MMM, hh:mm a",
+            )}
           </small>
         </div>
       </div>
@@ -105,7 +114,7 @@ export function ExamCard({ exam, index = 0 }: { exam: Exam; index?: number }) {
   );
 }
 export function StudentDashboard({ listOnly = false }: { listOnly?: boolean }) {
-  const { data, sessionId } = useDemo();
+  const { data, sessionId } = usePlatform();
   const user = data.users.find((u) => u.id === sessionId)!;
   const params = useSearchParams();
   const [search, setSearch] = useState(params.get("q") ?? "");
@@ -205,25 +214,35 @@ export function StudentDashboard({ listOnly = false }: { listOnly?: boolean }) {
           <div className="grid four stats-grid">
             <StatCard
               label="Assigned exams"
-              value={assigned.length.toString().padStart(2, "0")}
+              value={(data.metrics?.assignedExams ?? assigned.length)
+                .toString()
+                .padStart(2, "0")}
               detail="Your opportunities to grow"
               icon={<BookOpen size={18} />}
             />
             <StatCard
               label="Upcoming exams"
-              value={upcoming.length.toString().padStart(2, "0")}
+              value={(data.metrics?.upcomingExams ?? upcoming.length)
+                .toString()
+                .padStart(2, "0")}
               detail="Something to look forward to"
               icon={<CalendarDays size={18} />}
             />
             <StatCard
               label="Completed exams"
-              value={attempts.length.toString().padStart(2, "0")}
+              value={(data.metrics?.submittedAttempts ?? attempts.length)
+                .toString()
+                .padStart(2, "0")}
               detail="Every attempt counts"
               icon={<CheckCircle2 size={18} />}
             />
             <StatCard
               label="Average score"
-              value={released.length ? `${average}%` : "—"}
+              value={
+                (data.metrics?.publishedResults ?? released.length)
+                  ? `${data.metrics?.averageScore ?? average}%`
+                  : "—"
+              }
               detail={
                 released.length
                   ? "Across published results"
@@ -303,13 +322,22 @@ export function StudentDashboard({ listOnly = false }: { listOnly?: boolean }) {
                     href={`/student/exams/${e.id}`}
                   >
                     <span className="calendar-tile">
-                      <small>{date(e.schedule.start, "MMM")}</small>
-                      <strong>{date(e.schedule.start, "dd")}</strong>
+                      <small>
+                        {examDate(e.schedule.start, e.schedule.timeZone, "MMM")}
+                      </small>
+                      <strong>
+                        {examDate(e.schedule.start, e.schedule.timeZone, "dd")}
+                      </strong>
                     </span>
                     <div>
                       <strong>{e.title}</strong>
                       <small>
-                        {date(e.schedule.start, "hh:mm a")} · {e.duration} min
+                        {examDate(
+                          e.schedule.start,
+                          e.schedule.timeZone,
+                          "hh:mm a",
+                        )}{" "}
+                        · {e.duration} min
                       </small>
                     </div>
                     <ArrowUpRight size={15} />
@@ -323,7 +351,7 @@ export function StudentDashboard({ listOnly = false }: { listOnly?: boolean }) {
               <div className="soft-note">
                 <Clock3 size={15} />
                 <span>
-                  All times are shown in your browser’s local time zone.
+                  Examination times use each exam’s configured time zone.
                 </span>
               </div>
             </div>

@@ -1,10 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Check, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
-import { useDemo } from "@/lib/mock/store";
+import { usePlatform, request } from "@/lib/client/store";
 import type { User, UserStatus } from "@/types/domain";
 import { date } from "@/lib/utils";
 import {
@@ -16,9 +16,10 @@ import {
   PageHeader,
   SearchToolbar,
   Tabs,
+  Input,
 } from "@/components/ui";
 export function UsersManagement() {
-  const store = useDemo();
+  const store = usePlatform();
   const [tab, setTab] = useState("All users");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
@@ -27,11 +28,42 @@ export function UsersManagement() {
     status: UserStatus;
   } | null>(null);
   const [profile, setProfile] = useState<User | null>(null);
-  const users = store.data.users.filter(
-    (u) =>
-      u.role === "student" &&
-      (tab === "All users" || u.status === tab.toLowerCase()),
-  );
+  const [users, setUsers] = useState<User[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [sort, setSort] = useState("registeredAt");
+  const [desc, setDesc] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      const query = new URLSearchParams({
+        page: String(page),
+        pageSize: "10",
+        search,
+        status: tab === "All users" ? "all" : tab.toLowerCase(),
+        sort,
+        desc: String(desc),
+      });
+      void request<{ users: User[]; total: number }>(
+        `/api/platform/users?${query}`,
+      )
+        .then((r) => {
+          if (!cancelled) {
+            setUsers(r.users);
+            setTotal(r.total);
+            setLoadError("");
+          }
+        })
+        .catch((e) => {
+          if (!cancelled) setLoadError(e.message);
+        });
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [page, search, tab, sort, desc, store.data.users]);
   const matchingUsers = users.filter((u) =>
     `${u.name} ${u.email} ${u.mobile} ${u.status} ${u.registeredAt}`
       .toLowerCase()
@@ -143,14 +175,37 @@ export function UsersManagement() {
         <Tabs
           items={["All users", "Pending", "Approved", "Rejected", "Suspended"]}
           value={tab}
-          onChange={setTab}
+          onChange={(v) => {
+            setTab(v);
+            setPage(1);
+            setSelected([]);
+          }}
         />
         <div className="panel-body no-bottom">
           <SearchToolbar
             value={search}
-            onChange={setSearch}
+            onChange={(v) => {
+              setSearch(v);
+              setPage(1);
+            }}
             placeholder="Search learners, email or mobile…"
           >
+            <select
+              aria-label="Sort learners"
+              value={sort}
+              onChange={(e) => {
+                setSort(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="registeredAt">Registration date</option>
+              <option value="name">Name</option>
+              <option value="email">Email</option>
+              <option value="status">Status</option>
+            </select>
+            <Button variant="secondary" onClick={() => setDesc(!desc)}>
+              {desc ? "Descending" : "Ascending"}
+            </Button>
             <Button
               disabled={!selected.length}
               onClick={() => setAction({ ids: selected, status: "approved" })}
@@ -160,17 +215,26 @@ export function UsersManagement() {
             </Button>
           </SearchToolbar>
         </div>
-        <DataTable columns={columns} data={users} search={search} />
+        {loadError && (
+          <p className="form-error" role="alert">
+            {loadError}
+          </p>
+        )}
+        <DataTable
+          columns={columns}
+          data={users}
+          server={{ page, pageSize: 10, total, onPage: setPage }}
+        />
       </div>
       <ConfirmDialog
         open={!!action}
         onOpenChange={(v) => !v && setAction(null)}
         title={`Set ${action?.ids.length ?? 0} learner(s) to ${action?.status}?`}
-        description="This updates the shared demo state. Only approved learners can start assigned examinations."
+        description="This change is stored in the database and audited. Only approved learners can start assigned examinations."
         label="Update status"
-        onConfirm={() => {
+        onConfirm={async () => {
           if (action) {
-            store.setStatus(action.ids, action.status);
+            await store.setStatus(action.ids, action.status);
             toast.success("Learner status updated.");
             setSelected([]);
           }
@@ -191,6 +255,49 @@ export function UsersManagement() {
               {profile.mobile} · {profile.institution || "Independent learner"}
             </p>
             <p>Registered {date(profile.registeredAt)}</p>
+            <div className="form-stack">
+              <Input
+                label="Learner full name"
+                value={profile.name}
+                onChange={(e) =>
+                  setProfile({ ...profile, name: e.target.value })
+                }
+              />
+              <Input
+                label="Learner mobile"
+                value={profile.mobile}
+                onChange={(e) =>
+                  setProfile({ ...profile, mobile: e.target.value })
+                }
+              />
+              <Input
+                label="Learner institution"
+                value={profile.institution}
+                onChange={(e) =>
+                  setProfile({ ...profile, institution: e.target.value })
+                }
+              />
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  try {
+                    await store.updateProfile(
+                      {
+                        name: profile.name,
+                        mobile: profile.mobile,
+                        institution: profile.institution,
+                      },
+                      profile.id,
+                    );
+                    toast.success("Learner profile updated.");
+                  } catch (e) {
+                    toast.error((e as Error).message);
+                  }
+                }}
+              >
+                Save learner details
+              </Button>
+            </div>
             <h4>Exam assignments</h4>
             {store.data.exams.map((e) => {
               const assigned = store.data.assignments.some(
@@ -204,9 +311,9 @@ export function UsersManagement() {
                   <Button
                     variant="secondary"
                     disabled={!assigned && profile.status !== "approved"}
-                    onClick={() => {
+                    onClick={async () => {
                       try {
-                        store.assign(e.id, [profile.id], assigned);
+                        await store.assign(e.id, [profile.id], assigned);
                         toast.success(
                           assigned ? "Assignment removed." : "Exam assigned.",
                         );

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { ConfirmDialog, Tabs } from "@/components/ui";
 it("exposes tab selection through accessible controls", () => {
@@ -11,7 +11,7 @@ it("exposes tab selection through accessible controls", () => {
   fireEvent.click(screen.getByRole("tab", { name: "Pending" }));
   expect(onChange).toHaveBeenCalledWith("Pending");
 });
-it("requires a deliberate confirm action in an accessible dialog", () => {
+it("requires a deliberate confirm action in an accessible dialog", async () => {
   const onConfirm = vi.fn(),
     onOpenChange = vi.fn();
   render(
@@ -26,5 +26,5 @@ it("requires a deliberate confirm action in an accessible dialog", () => {
   expect(screen.getByRole("dialog")).toHaveAccessibleName("Release result?");
   fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
   expect(onConfirm).toHaveBeenCalledOnce();
-  expect(onOpenChange).toHaveBeenCalledWith(false);
+  await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
 });

@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -8,7 +9,7 @@ import {
   LockKeyhole,
   Trophy,
 } from "lucide-react";
-import { useDemo } from "@/lib/mock/store";
+import { usePlatform } from "@/lib/client/store";
 import { date, duration } from "@/lib/utils";
 import {
   Badge,
@@ -16,6 +17,7 @@ import {
   EmptyState,
   PageHeader,
   StatCard,
+  ConfirmDialog,
 } from "@/components/ui";
 import { PerformanceChart, ScoreRing } from "@/components/charts";
 import { MathText } from "@/components/math-text";
@@ -79,7 +81,9 @@ export function ResultDetail({
   attemptId: string;
   admin?: boolean;
 }) {
-  const { data, sessionId } = useDemo();
+  const platform = usePlatform();
+  const { data, sessionId } = platform;
+  const [publication, setPublication] = useState<boolean | null>(null);
   const attempt = data.attempts.find(
     (a) => a.id === attemptId && (admin || a.userId === sessionId),
   );
@@ -126,7 +130,21 @@ export function ResultDetail({
         eyebrow="A MOMENT TO REFLECT & GROW"
         title={exam?.title ?? "Examination result"}
         description={`${data.users.find((u) => u.id === attempt.userId)?.name} · Submitted ${date(attempt.submittedAt!)}`}
-        action={<Badge>{result.passed ? "Passed" : "Not passed"}</Badge>}
+        action={
+          <div className="button-row">
+            <Badge>{result.passed ? "Passed" : "Not passed"}</Badge>
+            {admin && (
+              <Button
+                variant="secondary"
+                onClick={() => setPublication(!attempt.publication.released)}
+              >
+                {attempt.publication.released
+                  ? "Withhold this result"
+                  : "Release this result"}
+              </Button>
+            )}
+          </div>
+        }
       />
       <div className="result-summary panel">
         <ScoreRing score={result.percentage} />
@@ -205,12 +223,25 @@ export function ResultDetail({
           </div>
         </div>
       </section>
-      {(admin || exam?.showReview) && <AnswerSheet attempt={attempt} />}
+      {(admin || attempt.showReview) && <AnswerSheet attempt={attempt} />}
+      {admin && (
+        <ConfirmDialog
+          open={publication !== null}
+          onOpenChange={(open) => !open && setPublication(null)}
+          title={publication ? "Release this result?" : "Withhold this result?"}
+          description="This changes publication for this individual attempt only."
+          label="Confirm publication change"
+          onConfirm={async () => {
+            await platform.release(attempt.examId, !!publication, attempt.id);
+            setPublication(null);
+          }}
+        />
+      )}
     </>
   );
 }
 export function StudentResults() {
-  const { data, sessionId } = useDemo();
+  const { data, sessionId } = usePlatform();
   const attempts = data.attempts.filter(
     (a) => a.userId === sessionId && a.status === "submitted",
   );

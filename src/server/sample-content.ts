@@ -1,4 +1,4 @@
-import type { DemoData, Exam, Question } from "@/types/domain";
+import type { WorkspaceData, Exam, Question } from "@/types/domain";
 export const id = () => crypto.randomUUID();
 export function blankQuestion(sectionId = "reasoning"): Question {
   return {
@@ -132,7 +132,7 @@ const bank = [
     "knowledge",
   ],
 ] as const;
-export function seed(): DemoData {
+export function seed(): WorkspaceData {
   const now = Date.now();
   const date = (d: number) => new Date(now + d * 86400000).toISOString();
   const names = [
@@ -188,12 +188,11 @@ export function seed(): DemoData {
         difficulty: j % 3 === 0 ? "Easy" : "Medium",
       })),
   }));
-  const users: DemoData["users"] = [
+  const users: WorkspaceData["users"] = [
     {
       id: "admin",
       name: "Demo Administrator",
       email: "admin@demo.test",
-      demoPassword: "Admin@12345",
       role: "admin",
       status: "approved",
       mobile: "9000000000",
@@ -204,7 +203,6 @@ export function seed(): DemoData {
       id: "student",
       name: "Arjun Sharma",
       email: "student@demo.test",
-      demoPassword: "Student@12345",
       role: "student",
       status: "approved",
       mobile: "9000000001",
@@ -223,7 +221,6 @@ export function seed(): DemoData {
       id: `user-${i}`,
       name,
       email: `candidate${i + 1}@demo.test`,
-      demoPassword: "Student@12345",
       role: "student" as const,
       status: (
         [

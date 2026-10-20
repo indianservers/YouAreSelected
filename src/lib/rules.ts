@@ -1,4 +1,4 @@
-import type { DemoData, Exam, User, Question } from "@/types/domain";
+import type { WorkspaceData, Exam, User, Question } from "@/types/domain";
 export function questionErrors(q: Question): string[] {
   const errors: string[] = [];
   if (!q.text.trim()) errors.push("Question text is required.");
@@ -77,7 +77,7 @@ export function examErrors(e: Exam): string[] {
   return errors;
 }
 export function eligibility(
-  data: DemoData,
+  data: WorkspaceData,
   exam: Exam,
   user: User,
   now = Date.now(),
@@ -102,7 +102,7 @@ export function eligibility(
   return null;
 }
 export function examStatus(
-  data: DemoData,
+  data: WorkspaceData,
   e: Exam,
   userId: string,
   now = Date.now(),

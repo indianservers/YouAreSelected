@@ -8,7 +8,7 @@ export const metadata: Metadata = {
     template: "%s | YouAreSelected",
   },
   description:
-    "A focused examination workspace for ambitious learners. Phase 1 interactive demo.",
+    "A focused examination workspace with private accounts, timed assessments and meaningful insights.",
 };
 export default function RootLayout({
   children,

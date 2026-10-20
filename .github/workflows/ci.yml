@@ -1,4 +1,4 @@
-name: Verify Phase 1
+name: Verify examination platform
 on:
   push:
     branches: [main]

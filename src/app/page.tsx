@@ -44,7 +44,7 @@ export default function Home() {
           </p>
           <div className="hero-actions">
             <Link className="btn btn-primary" href="/login">
-              Explore the demo <ArrowRight size={18} />
+              Open your workspace <ArrowRight size={18} />
             </Link>
             <a className="btn btn-secondary" href="#experience">
               See what’s inside <ChevronRight size={16} />
@@ -209,7 +209,7 @@ export default function Home() {
       </section>
       <footer className="landing-footer">
         <Brand />
-        <p>Phase 1 interactive demo. All data stays in your browser.</p>
+        <p>A focused examination workspace. Built for your next chapter.</p>
         <Link href="/login">
           Open workspace <ArrowRight size={15} />
         </Link>

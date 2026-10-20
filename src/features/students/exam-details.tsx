@@ -15,9 +15,9 @@ import {
   Target,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useDemo } from "@/lib/mock/store";
+import { usePlatform } from "@/lib/client/store";
 import { eligibility, examStatus } from "@/lib/rules";
-import { date } from "@/lib/utils";
+import { examDate } from "@/lib/utils";
 import {
   Badge,
   Button,
@@ -32,7 +32,7 @@ export function ExamDetails({
   examId: string;
   instructions?: boolean;
 }) {
-  const store = useDemo();
+  const store = usePlatform();
   const router = useRouter();
   const [ack, setAck] = useState(false);
   const exam = store.data.exams.find((e) => e.id === examId);
@@ -41,7 +41,7 @@ export function ExamDetails({
     return (
       <EmptyState
         title="Exam not found"
-        description="This examination is no longer in your demo workspace."
+        description="This examination is unavailable or is not assigned to your account."
         action={
           <Button asChild>
             <Link href="/student/exams">Back to examinations</Link>
@@ -128,8 +128,7 @@ export function ExamDetails({
                 Results remain private until your administrator releases them.
               </li>
               <li>
-                This is a client-side demonstration. Timing and access are not
-                secure or authoritative.
+                Time limits and examination access are enforced by the server.
               </li>
             </ol>
             <h3>Sections & marking</h3>
@@ -158,13 +157,14 @@ export function ExamDetails({
             <div className="panel-body">
               <div className="schedule-detail">
                 <small>OPENS</small>
-                <strong>{date(exam.schedule.start)}</strong>
+                <strong>
+                  {examDate(exam.schedule.start, exam.schedule.timeZone)}
+                </strong>
                 <small>CLOSES</small>
-                <strong>{date(exam.schedule.end)}</strong>
-                <p>
-                  Displayed in local time · configured zone:{" "}
-                  {exam.schedule.timeZone}
-                </p>
+                <strong>
+                  {examDate(exam.schedule.end, exam.schedule.timeZone)}
+                </strong>
+                <p>Examination time zone: {exam.schedule.timeZone}</p>
               </div>
               {reason && (
                 <div className="notice">
@@ -186,9 +186,9 @@ export function ExamDetails({
                   <Button
                     className="full-width"
                     disabled={!!reason || !ack}
-                    onClick={() => {
+                    onClick={async () => {
                       try {
-                        store.start(exam.id);
+                        await store.start(exam.id);
                         router.push(`/student/exams/${exam.id}/attempt`);
                       } catch (e) {
                         toast.error((e as Error).message);
@@ -207,7 +207,7 @@ export function ExamDetails({
               )}
               <div className="soft-note">
                 <ShieldCheck size={16} />
-                Your responses are saved in this browser.
+                Your responses are saved securely on the server.
               </div>
             </div>
           </div>

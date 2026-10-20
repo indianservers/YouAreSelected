@@ -8,7 +8,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useDemo } from "@/lib/mock/store";
+import { usePlatform } from "@/lib/client/store";
 import { date } from "@/lib/utils";
 import {
   Avatar,
@@ -19,7 +19,7 @@ import {
   StatCard,
 } from "@/components/ui";
 export function Profile() {
-  const store = useDemo();
+  const store = usePlatform();
   const user = store.data.users.find((u) => u.id === store.sessionId)!;
   const [profile, setProfile] = useState({
     name: user.name,
@@ -71,10 +71,14 @@ export function Profile() {
           </div>
           <form
             className="panel-body form-stack"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              store.updateProfile(profile);
-              toast.success("Profile updated.");
+              try {
+                await store.updateProfile(profile);
+                toast.success("Profile updated.");
+              } catch (error) {
+                toast.error((error as Error).message);
+              }
             }}
           >
             <Input
@@ -116,39 +120,41 @@ export function Profile() {
         <section className="panel">
           <div className="panel-heading">
             <LockKeyhole size={18} />
-            <h2>Change demo password</h2>
+            <h2>Change password</h2>
           </div>
           <form
             className="panel-body form-stack"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
               try {
                 if (next !== confirm) throw Error("New passwords must match.");
-                store.changePassword(current, next);
+                await store.changePassword(current, next);
                 setCurrent("");
                 setNext("");
                 setConfirm("");
-                toast.success("Demo password changed in this browser.");
+                toast.success(
+                  "Password changed. Other sessions have been revoked.",
+                );
               } catch (error) {
                 toast.error((error as Error).message);
               }
             }}
           >
             <div className="notice">
-              Demo only. Passwords are stored in this browser and are not
-              secure. Do not use a real password.
+              Choose a unique password of at least 12 characters. Changing it
+              revokes other active sessions.
             </div>
             <Input
-              label="Current demo password"
+              label="Current password"
               type="password"
               value={current}
               onChange={(e) => setCurrent(e.target.value)}
               required
             />
             <Input
-              label="New demo password"
+              label="New password"
               type="password"
-              minLength={10}
+              minLength={12}
               value={next}
               onChange={(e) => setNext(e.target.value)}
               required
@@ -162,7 +168,7 @@ export function Profile() {
               required
             />
             <Button variant="secondary" type="submit">
-              Update demo password
+              Update password
             </Button>
           </form>
         </section>

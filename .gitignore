@@ -9,3 +9,4 @@ playwright-report/
 *.tsbuildinfo
 .vercel/
 lint-results.json
+.test-databases/
